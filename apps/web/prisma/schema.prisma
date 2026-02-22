@@ -21,10 +21,15 @@ model Document {
   extractedPageCount  Int?
   extractionDurationMs Int?
   ocrStatus         String    @default("not_requested")
+  ocrMode           String?
   ocrReason         String?
   ocrError          String?
   ocrRequestedAt    DateTime?
   ocrCompletedAt    DateTime?
+  ocrProgressCurrentPage Int?
+  ocrProgressTotalPages  Int?
+  ocrProgressMessage     String?
+  ocrProgressUpdatedAt   DateTime?
   extractionStatus String    @default("pending")
   extractionError  String?
   extractedAt      DateTime?

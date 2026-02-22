@@ -17,10 +17,15 @@ type SystemDocumentsResponse = {
     extractedPageCount: number | null;
     extractionDurationMs: number | null;
     ocrStatus: string;
+    ocrMode: string | null;
     ocrReason: string | null;
     ocrError: string | null;
     ocrRequestedAt: string | null;
     ocrCompletedAt: string | null;
+    ocrProgressCurrentPage: number | null;
+    ocrProgressTotalPages: number | null;
+    ocrProgressMessage: string | null;
+    ocrProgressUpdatedAt: string | null;
     extractionStatus: string;
     extractionError: string | null;
     extractedAt: string | null;
@@ -42,10 +47,15 @@ type DocumentChunksResponse = {
     extractedPageCount: number | null;
     extractionDurationMs: number | null;
     ocrStatus: string;
+    ocrMode: string | null;
     ocrReason: string | null;
     ocrError: string | null;
     ocrRequestedAt: string | null;
     ocrCompletedAt: string | null;
+    ocrProgressCurrentPage: number | null;
+    ocrProgressTotalPages: number | null;
+    ocrProgressMessage: string | null;
+    ocrProgressUpdatedAt: string | null;
     extractionStatus: string;
     extractionError: string | null;
     extractedAt: string | null;
@@ -78,6 +88,13 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
     error: string | null;
     payload: DocumentChunksResponse | null;
   }>({ loading: false, error: null, payload: null });
+  const [ocrRequestState, setOcrRequestState] = useState<{
+    loading: boolean;
+    error: string | null;
+    message: string | null;
+  }>({ loading: false, error: null, message: null });
+  const [ocrMode, setOcrMode] = useState<"replace" | "supplement">("replace");
+  const [ocrFullRun, setOcrFullRun] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,6 +163,56 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
     }
   }
 
+  async function requestOcr() {
+    if (!documentId) {
+      return;
+    }
+
+    setOcrRequestState({ loading: true, error: null, message: null });
+
+    try {
+      const res = await fetch(`/api/documents/${documentId}/ocr/request`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          mode: ocrMode,
+          fullRun: ocrFullRun,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        queued?: boolean;
+        provider?: string;
+      };
+
+      if (!data.ok) {
+        setOcrRequestState({
+          loading: false,
+          error: data.error ?? "Failed to request OCR.",
+          message: null,
+        });
+        return;
+      }
+
+      setOcrRequestState({
+        loading: false,
+        error: null,
+        message: data.queued ? `OCR job queued (${data.provider ?? "worker"}).` : "OCR request sent.",
+      });
+
+      await loadChunks();
+    } catch {
+      setOcrRequestState({
+        loading: false,
+        error: "Failed to request OCR.",
+        message: null,
+      });
+    }
+  }
+
   const selectedDocument = useMemo(
     () => documentsState.documents.find((doc) => doc.id === documentId) ?? null,
     [documentsState.documents, documentId],
@@ -203,8 +270,37 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
           {chunksState.loading ? "Loading chunks..." : "Load Chunks"}
         </button>
 
+        <button
+          type="button"
+          onClick={() => void requestOcr()}
+          disabled={!documentId || ocrRequestState.loading}
+          className="h-10 rounded-lg bg-orange-400 px-4 text-sm font-medium text-zinc-950 hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {ocrRequestState.loading ? "Queueing OCR..." : "Request OCR"}
+        </button>
+
+        <select
+          value={ocrMode}
+          onChange={(event) => setOcrMode(event.target.value === "supplement" ? "supplement" : "replace")}
+          className="h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-100 outline-none focus:border-zinc-500"
+        >
+          <option value="replace">OCR mode: replace</option>
+          <option value="supplement">OCR mode: supplement</option>
+        </select>
+
+        <label className="flex items-center gap-2 text-xs text-zinc-300">
+          <input
+            type="checkbox"
+            checked={ocrFullRun}
+            onChange={(event) => setOcrFullRun(event.target.checked)}
+          />
+          Full OCR run (disable dev page cap)
+        </label>
+
         {documentsState.loading ? <span className="text-xs text-zinc-400">Loading documents...</span> : null}
         {documentsState.error ? <span className="text-xs text-rose-300">{documentsState.error}</span> : null}
+        {ocrRequestState.error ? <span className="text-xs text-rose-300">{ocrRequestState.error}</span> : null}
+        {ocrRequestState.message ? <span className="text-xs text-emerald-300">{ocrRequestState.message}</span> : null}
       </div>
 
       {selectedDocument ? (
@@ -228,8 +324,16 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
           </p>
           <p className="mt-1 text-zinc-300">
             <span className="text-zinc-500">ocr:</span> {selectedDocument.ocrStatus}
+            {selectedDocument.ocrMode ? ` • mode=${selectedDocument.ocrMode}` : ""}
             {selectedDocument.ocrReason ? ` • ${selectedDocument.ocrReason}` : ""}
             {selectedDocument.ocrRequestedAt ? ` • requested ${selectedDocument.ocrRequestedAt}` : ""}
+          </p>
+          <p className="mt-1 text-zinc-300">
+            <span className="text-zinc-500">ocr progress:</span>{" "}
+            {selectedDocument.ocrProgressCurrentPage ?? 0}/
+            {selectedDocument.ocrProgressTotalPages ?? "?"}
+            {selectedDocument.ocrProgressMessage ? ` • ${selectedDocument.ocrProgressMessage}` : ""}
+            {selectedDocument.ocrProgressUpdatedAt ? ` • updated ${selectedDocument.ocrProgressUpdatedAt}` : ""}
           </p>
           {selectedDocument.ocrError ? (
             <p className="mt-1 break-words text-amber-300">

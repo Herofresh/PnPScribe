@@ -34,7 +34,11 @@ export default async function Home() {
       extractedPageCount: number | null;
       extractionDurationMs: number | null;
       ocrStatus: string;
+      ocrMode: string | null;
       ocrReason: string | null;
+      ocrProgressCurrentPage: number | null;
+      ocrProgressTotalPages: number | null;
+      ocrProgressMessage: string | null;
       extractionStatus: string;
       extractionError: string | null;
       extractedAt: Date | null;
@@ -68,7 +72,11 @@ export default async function Home() {
             extractedPageCount: true,
             extractionDurationMs: true,
             ocrStatus: true,
+            ocrMode: true,
             ocrReason: true,
+            ocrProgressCurrentPage: true,
+            ocrProgressTotalPages: true,
+            ocrProgressMessage: true,
             extractionStatus: true,
             extractionError: true,
             extractedAt: true,
@@ -218,7 +226,14 @@ export default async function Home() {
                             </p>
                             <p className="mt-1 text-zinc-300">
                               <span className="text-zinc-500">ocr:</span> {document.ocrStatus}
+                              {document.ocrMode ? ` • mode=${document.ocrMode}` : ""}
                               {document.ocrReason ? ` • ${document.ocrReason}` : ""}
+                            </p>
+                            <p className="mt-1 text-zinc-300">
+                              <span className="text-zinc-500">ocr progress:</span>{" "}
+                              {document.ocrProgressCurrentPage ?? 0}/
+                              {document.ocrProgressTotalPages ?? "?"}
+                              {document.ocrProgressMessage ? ` • ${document.ocrProgressMessage}` : ""}
                             </p>
                             <p className="mt-1 text-zinc-300">
                               <span className="text-zinc-500">extractedAt:</span>{" "}
