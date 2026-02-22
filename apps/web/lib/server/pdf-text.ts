@@ -1,63 +1,47 @@
 import "server-only";
-import { createRequire } from "node:module";
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
 
-type PdfParseClassCtor = new (options: {
-  data: Uint8Array | Buffer;
-}) => {
-  getText: () => Promise<{ text?: string }>;
-  destroy?: () => Promise<void>;
-};
+const execFileAsync = promisify(execFile);
 
-interface PdfParseModule {
-  PDFParse: PdfParseClassCtor & {
-    setWorker?: (workerSrc?: string) => string;
-  };
-}
+export async function extractPdfText(filePath: string) {
+  const scriptPath = path.resolve(process.cwd(), "scripts", "extract-pdf-text.mjs");
 
-async function extractWithPdfParseClass(PDFParse: PdfParseClassCtor, buffer: Buffer) {
-  const parser = new PDFParse({ data: buffer });
+  let stdout = "";
+  let stderr = "";
 
   try {
-    const result = await parser.getText();
-    return typeof result?.text === "string" ? result.text : "";
-  } finally {
-    if (typeof parser.destroy === "function") {
-      await parser.destroy().catch(() => undefined);
-    }
+    const result = await execFileAsync(process.execPath, [scriptPath, filePath], {
+      cwd: process.cwd(),
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    stdout = result.stdout;
+    stderr = result.stderr;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "PDF text extraction child process failed.";
+    throw new Error(message);
   }
-}
 
-export async function extractPdfText(buffer: Buffer) {
-  let pdfParseModule: unknown;
-  const require = createRequire(import.meta.url);
+  if (!stdout) {
+    throw new Error(stderr || "PDF text extraction produced no output.");
+  }
 
+  let parsed: unknown;
   try {
-    pdfParseModule = require("pdf-parse");
+    parsed = JSON.parse(stdout);
   } catch {
-    try {
-      pdfParseModule = await import("pdf-parse");
-    } catch {
-      throw new Error(
-        "PDF text extraction unavailable: install 'pdf-parse' in apps/web to enable digital PDF parsing.",
-      );
-    }
+    throw new Error("PDF text extraction returned invalid JSON output.");
   }
 
-  const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
-
-  let text = "";
-  if (
-    typeof pdfParseModule === "object" &&
-    pdfParseModule !== null &&
-    "PDFParse" in pdfParseModule &&
-    typeof (pdfParseModule as { PDFParse: unknown }).PDFParse === "function"
-  ) {
-    const { PDFParse } = pdfParseModule as PdfParseModule;
-    PDFParse.setWorker?.(workerPath);
-    text = await extractWithPdfParseClass(PDFParse, buffer);
-  } else {
-    throw new Error("Unsupported pdf-parse module shape (expected pdf-parse v2 PDFParse export).");
-  }
+  const text =
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "text" in parsed &&
+    typeof (parsed as { text: unknown }).text === "string"
+      ? (parsed as { text: string }).text
+      : "";
 
   return text.replace(/\u0000/g, "").trim();
 }

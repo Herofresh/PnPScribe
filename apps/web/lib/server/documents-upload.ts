@@ -98,7 +98,7 @@ export async function uploadDocumentFromFormData(formData: FormData) {
   let embeddingError: string | null = null;
 
   try {
-    const extractedText = await extractPdfText(buffer);
+    const extractedText = await extractPdfText(absolutePath);
 
     if (!extractedText) {
       throw new Error("No extractable digital text found in PDF.");
