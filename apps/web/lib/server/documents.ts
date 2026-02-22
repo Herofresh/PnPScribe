@@ -24,6 +24,9 @@ export async function listDocumentsForSystem(systemId: string) {
         select: {
           id: true,
           filePath: true,
+          extractionStatus: true,
+          extractionError: true,
+          extractedAt: true,
           createdAt: true,
         },
       },

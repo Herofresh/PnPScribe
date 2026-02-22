@@ -14,12 +14,16 @@ model System {
 }
 
 model Document {
-  id        String   @id @default(cuid())
-  filePath  String
-  systemId  String
-  system    System   @relation(fields: [systemId], references: [id])
-  chunks    Chunk[]
-  createdAt DateTime @default(now())
+  id               String    @id @default(cuid())
+  filePath         String
+  extractedText    String?
+  extractionStatus String    @default("pending")
+  extractionError  String?
+  extractedAt      DateTime?
+  systemId         String
+  system           System    @relation(fields: [systemId], references: [id])
+  chunks           Chunk[]
+  createdAt        DateTime  @default(now())
 }
 
 model Chunk {

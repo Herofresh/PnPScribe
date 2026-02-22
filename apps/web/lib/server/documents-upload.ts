@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/server/http-error";
+import { extractPdfText } from "@/lib/server/pdf-text";
 
 function sanitizeFilename(name: string) {
   const normalized = name.trim().replace(/\s+/g, "-").toLowerCase();
@@ -74,17 +75,78 @@ export async function uploadDocumentFromFormData(formData: FormData) {
     data: {
       systemId: system.id,
       filePath: relativePath,
+      extractionStatus: "pending",
     },
     select: {
       id: true,
       filePath: true,
+      extractionStatus: true,
+      extractionError: true,
+      extractedAt: true,
       systemId: true,
       createdAt: true,
     },
   });
 
+  let extractionStatus = document.extractionStatus;
+  let extractionError = document.extractionError;
+  let extractedAt = document.extractedAt;
+
+  try {
+    const extractedText = await extractPdfText(buffer);
+
+    if (!extractedText) {
+      throw new Error("No extractable digital text found in PDF.");
+    }
+
+    const updated = await prisma.document.update({
+      where: { id: document.id },
+      data: {
+        extractedText,
+        extractionStatus: "succeeded",
+        extractionError: null,
+        extractedAt: new Date(),
+      },
+      select: {
+        extractionStatus: true,
+        extractionError: true,
+        extractedAt: true,
+      },
+    });
+
+    extractionStatus = updated.extractionStatus;
+    extractionError = updated.extractionError;
+    extractedAt = updated.extractedAt;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "PDF text extraction failed.";
+
+    const updated = await prisma.document.update({
+      where: { id: document.id },
+      data: {
+        extractionStatus: "failed",
+        extractionError: message.slice(0, 500),
+        extractedAt: null,
+      },
+      select: {
+        extractionStatus: true,
+        extractionError: true,
+        extractedAt: true,
+      },
+    });
+
+    extractionStatus = updated.extractionStatus;
+    extractionError = updated.extractionError;
+    extractedAt = updated.extractedAt;
+  }
+
   return {
-    document,
+    document: {
+      ...document,
+      extractionStatus,
+      extractionError,
+      extractedAt,
+    },
     file: {
       originalName: file.name,
       mimeType: file.type || "application/pdf",
