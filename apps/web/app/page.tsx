@@ -26,6 +26,17 @@ export default async function Home() {
     name: string;
     createdAt: Date;
     _count: { documents: number };
+    documents: Array<{
+      id: string;
+      filePath: string;
+      extractionStatus: string;
+      extractionError: string | null;
+      extractedAt: Date | null;
+      createdAt: Date;
+      _count: {
+        chunks: number;
+      };
+    }>;
   }> = [];
   let dbError: string | null = null;
 
@@ -39,6 +50,23 @@ export default async function Home() {
         _count: {
           select: {
             documents: true,
+          },
+        },
+        documents: {
+          orderBy: { createdAt: "desc" },
+          take: 3,
+          select: {
+            id: true,
+            filePath: true,
+            extractionStatus: true,
+            extractionError: true,
+            extractedAt: true,
+            createdAt: true,
+            _count: {
+              select: {
+                chunks: true,
+              },
+            },
           },
         },
       },
@@ -104,29 +132,85 @@ export default async function Home() {
           ) : (
             <ul className="space-y-2">
               {systems.map((system) => (
-                <li
-                  key={system.id}
-                  className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-3"
-                >
+                <li key={system.id} className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-3">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-zinc-100">
-                      {system.name}
-                    </span>
-                    <span className="text-xs text-zinc-400">
-                      {system.createdAt.toLocaleString()}
-                    </span>
+                    <span className="text-sm font-medium text-zinc-100">{system.name}</span>
+                    <span className="text-xs text-zinc-400">{system.createdAt.toLocaleString()}</span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-3 text-xs">
-                    <span className="text-zinc-400">
-                      Documents: {system._count.documents}
-                    </span>
+
+                  <div className="mt-2 rounded-md border border-zinc-800/80 bg-zinc-900/50 px-2 py-2 text-xs text-zinc-300">
+                    <p>
+                      <span className="text-zinc-500">systemId:</span>{" "}
+                      <code className="text-zinc-200">{system.id}</code>
+                    </p>
+                    <p className="mt-1">
+                      <span className="text-zinc-500">createdAt (ISO):</span>{" "}
+                      <code className="text-zinc-200">{system.createdAt.toISOString()}</code>
+                    </p>
+                    <p className="mt-1">
+                      <span className="text-zinc-500">documents:</span> {system._count.documents}
+                    </p>
+                    <p className="mt-1">
+                      <span className="text-zinc-500">recent extraction:</span>{" "}
+                      {system.documents.length === 0
+                        ? "none"
+                        : `${system.documents.filter((d) => d.extractionStatus === "succeeded").length} ok / ${system.documents.filter((d) => d.extractionStatus === "failed").length} failed / ${system.documents.filter((d) => d.extractionStatus === "pending").length} pending (latest 3)`}
+                    </p>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                     <a
                       href={`/api/systems/${system.id}/documents`}
                       className="text-zinc-300 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
                     >
-                      View documents JSON
+                      Documents JSON
                     </a>
+                    <a
+                      href={`/api/systems/${system.id}/indexing-status`}
+                      className="text-zinc-300 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
+                    >
+                      Indexing Status JSON
+                    </a>
+                    <code className="text-zinc-500">POST /api/systems/{system.id}/ask</code>
                   </div>
+
+                  {system.documents.length > 0 ? (
+                    <div className="mt-3 rounded-md border border-zinc-800/80 bg-zinc-900/40 p-2">
+                      <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                        Recent Documents (latest 3)
+                      </p>
+                      <ul className="mt-2 space-y-2">
+                        {system.documents.map((document) => (
+                          <li key={document.id} className="rounded border border-zinc-800 px-2 py-2 text-xs">
+                            <p className="text-zinc-200">
+                              <span className="text-zinc-500">docId:</span>{" "}
+                              <code>{document.id}</code>
+                            </p>
+                            <p className="mt-1 break-all text-zinc-300">
+                              <span className="text-zinc-500">file:</span> {document.filePath}
+                            </p>
+                            <p className="mt-1 text-zinc-300">
+                              <span className="text-zinc-500">status:</span> {document.extractionStatus}
+                              {" • "}
+                              <span className="text-zinc-500">chunks:</span> {document._count.chunks}
+                              {" • "}
+                              <span className="text-zinc-500">created:</span>{" "}
+                              {document.createdAt.toLocaleString()}
+                            </p>
+                            <p className="mt-1 text-zinc-300">
+                              <span className="text-zinc-500">extractedAt:</span>{" "}
+                              {document.extractedAt ? document.extractedAt.toISOString() : "null"}
+                            </p>
+                            {document.extractionError ? (
+                              <p className="mt-1 break-words text-amber-300">
+                                <span className="text-zinc-500">error:</span> {document.extractionError}
+                              </p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>
