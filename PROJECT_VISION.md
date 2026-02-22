@@ -10,6 +10,8 @@ Additionally, PnPScribe will later act as a session log / protocol system and us
 
 The tool is local-first, runs via Docker, and provides a web interface accessible from any device.
 
+Rules are the baseline authority for system mechanics, but over time PnPScribe should support a broader, interconnected system where rules, structured system content (such as monsters/enemies), encounters, and story context can influence each other with clear boundaries.
+
 ---
 
 # Core Idea
@@ -29,6 +31,8 @@ Each RPG system (e.g., Pathfinder 2e, D&D, etc.) has its own:
 
 - Uploaded rulebooks (PDF)
 - Extracted text
+- Linked rulebook images / figures (future)
+- Structured system entities (e.g., monsters/statblocks) (future)
 - Embedding vectors
 - Scoped retrieval context
 
@@ -82,6 +86,7 @@ PnPScribe has two long-term AI domains with different rules:
 - No invention / no speculation
 - Citations required
 - System isolation mandatory (PF2e != D&D)
+- Rules remain the baseline authority for mechanics, constraints, and canonical system facts
 
 ## 2) Story Domain (Creative but Grounded)
 
@@ -96,6 +101,7 @@ This separation ensures:
 
 - Rules remain authoritative and reliable
 - Story tools remain creative without polluting rules answers
+- Future structured content (e.g., monsters/enemies) can use rules as baseline while allowing optional story-aware variants without changing canonical rules facts
 
 ---
 
@@ -113,7 +119,7 @@ The MVP should provide:
 - Upload one or multiple PDFs
 - Store files locally in /uploads/{system}
 - Extract text (digital PDFs via pdf-parse)
-- OCR fallback later (not MVP)
+- OCR fallback later (not MVP, including PDFs where text is embedded in scans/images)
 
 ## 3. Text Processing
 
@@ -132,6 +138,7 @@ The MVP should provide:
     - Token limit enforced
 - Return answer
 - Include source citation (chapter/page/chunk metadata where possible)
+- Future extension: return linked image/figure references as supporting citations when relevant
 
 ## 5. Model Switching
 
@@ -182,8 +189,24 @@ After MVP is stable:
 
 - Header-aware chunking
 - Page number metadata
-- OCR fallback with Tesseract worker
+- OCR/transcription for scanned PDFs and image-based text inside PDFs
+- Page-aware OCR output aligned to document/page metadata
+- Extraction of relevant rulebook images (tables, diagrams, stat blocks, reference figures)
+- Image metadata + tagging (system/document/page/type, optional user tags)
+- Link extracted images to nearby text chunks / page regions for grounded citations and retrieval
+- Return image references alongside text citations when relevant (future)
+- OCR fallback with Tesseract worker (or equivalent OCR worker)
 - Background job processing via Redis/BullMQ
+
+## Structured System Content (Monsters, Enemies, Statblocks)
+
+- Parse structured entities from rulebook PDFs where possible (monsters, enemies, statblocks, tables)
+- Support entity-aware splitting/chunking (not only generic text chunking)
+- Preserve links to source pages, nearby text, and citations for extracted entities
+- Prefer PDF parsing first, then normalize extracted entities into structured records over time
+- Allow future import/export of structured entity definitions (e.g., JSON)
+- Keep rules as the baseline for structured entities and derived variants
+- Enable shared access to structured entities across future systems (encounter builder, story tools, companion features)
 
 ---
 
@@ -200,10 +223,19 @@ After MVP is stable:
     - “facts from logs” vs “new suggestions”
 - Optional: integrate GM “world bible” documents
 
+## Monster / Enemy Builder (Future)
+
+- Build on baseline monsters/enemies grounded in system rules and source material
+- Support structured monster/enemy records and future JSON import/export
+- Allow optional story-aware variants/flavoring for encounters while preserving baseline references
+- Keep links to source rule text/pages for auditability where applicable
+
 ## Encounter Builder
 
 - XP budget calculator (system-specific)
 - Monster lookup via RAG
+- Monster lookup via structured entity records and parsed statblocks (future)
+- Reuse baseline monsters plus optional variants for encounter design (future)
 - Export encounter JSON
 
 ## Initiative Tracker
@@ -235,6 +267,7 @@ but a structured memory and rule engine that:
 - Supports world-building
 - Stores session history and enables strong recaps
 - Produces grounded story suggestions from logs
+- Combines grounded rule text, linked rulebook figures/images, and structured system entities as a shared GM knowledge layer
 
 ---
 
