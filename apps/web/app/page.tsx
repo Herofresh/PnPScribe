@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { ChunkDebugPanel } from "@/app/chunk-debug-panel";
 import { DocumentUploadPanel } from "@/app/document-upload-panel";
 import { prisma } from "@/lib/prisma";
 import { RulesAskPanel } from "@/app/rules-ask-panel";
@@ -219,6 +220,15 @@ export default async function Home() {
 
         {!dbError && systems.length > 0 ? (
           <DocumentUploadPanel
+            systems={systems.map((system) => ({
+              id: system.id,
+              name: system.name,
+            }))}
+          />
+        ) : null}
+
+        {!dbError && systems.length > 0 ? (
+          <ChunkDebugPanel
             systems={systems.map((system) => ({
               id: system.id,
               name: system.name,

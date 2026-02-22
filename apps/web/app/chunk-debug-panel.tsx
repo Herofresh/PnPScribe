@@ -1,0 +1,263 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type SystemOption = {
+  id: string;
+  name: string;
+};
+
+type SystemDocumentsResponse = {
+  ok: boolean;
+  error?: string;
+  documents?: Array<{
+    id: string;
+    filePath: string;
+    extractionStatus: string;
+    extractionError: string | null;
+    extractedAt: string | null;
+    createdAt: string;
+    _count: {
+      chunks: number;
+    };
+  }>;
+};
+
+type DocumentChunksResponse = {
+  ok: boolean;
+  error?: string;
+  document?: {
+    id: string;
+    filePath: string;
+    systemId: string;
+    extractionStatus: string;
+    extractionError: string | null;
+    extractedAt: string | null;
+    createdAt: string;
+    _count: {
+      chunks: number;
+    };
+  };
+  chunks?: Array<{
+    id: string;
+    chunkIndex: number;
+    pageNumber: number | null;
+    chapterHint: string | null;
+    content: string;
+    hasEmbedding: boolean;
+    createdAt: string;
+  }>;
+};
+
+export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
+  const [systemId, setSystemId] = useState(systems[0]?.id ?? "");
+  const [documentsState, setDocumentsState] = useState<{
+    loading: boolean;
+    error: string | null;
+    documents: NonNullable<SystemDocumentsResponse["documents"]>;
+  }>({ loading: false, error: null, documents: [] });
+  const [documentId, setDocumentId] = useState("");
+  const [chunksState, setChunksState] = useState<{
+    loading: boolean;
+    error: string | null;
+    payload: DocumentChunksResponse | null;
+  }>({ loading: false, error: null, payload: null });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDocuments() {
+      if (!systemId) {
+        setDocumentsState({ loading: false, error: null, documents: [] });
+        setDocumentId("");
+        return;
+      }
+
+      setDocumentsState((prev) => ({ ...prev, loading: true, error: null }));
+      setChunksState({ loading: false, error: null, payload: null });
+
+      try {
+        const res = await fetch(`/api/systems/${systemId}/documents`);
+        const data = (await res.json()) as SystemDocumentsResponse;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!data.ok) {
+          setDocumentsState({ loading: false, error: data.error ?? "Failed to load documents.", documents: [] });
+          setDocumentId("");
+          return;
+        }
+
+        const docs = data.documents ?? [];
+        setDocumentsState({ loading: false, error: null, documents: docs });
+        setDocumentId((current) => (docs.some((doc) => doc.id === current) ? current : (docs[0]?.id ?? "")));
+      } catch {
+        if (!cancelled) {
+          setDocumentsState({ loading: false, error: "Failed to load documents.", documents: [] });
+          setDocumentId("");
+        }
+      }
+    }
+
+    void loadDocuments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [systemId]);
+
+  async function loadChunks() {
+    if (!documentId) {
+      return;
+    }
+
+    setChunksState({ loading: true, error: null, payload: null });
+
+    try {
+      const res = await fetch(`/api/documents/${documentId}/chunks`);
+      const data = (await res.json()) as DocumentChunksResponse;
+
+      if (!data.ok) {
+        setChunksState({ loading: false, error: data.error ?? "Failed to load chunks.", payload: null });
+        return;
+      }
+
+      setChunksState({ loading: false, error: null, payload: data });
+    } catch {
+      setChunksState({ loading: false, error: "Failed to load chunks.", payload: null });
+    }
+  }
+
+  const selectedDocument = useMemo(
+    () => documentsState.documents.find((doc) => doc.id === documentId) ?? null,
+    [documentsState.documents, documentId],
+  );
+
+  if (systems.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-zinc-200">Chunk Debug (Document Inspector)</h2>
+        <span className="text-xs text-zinc-500">Inspect indexed text/chunks without curl</span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select
+          value={systemId}
+          onChange={(event) => setSystemId(event.target.value)}
+          className="h-11 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+        >
+          {systems.map((system) => (
+            <option key={system.id} value={system.id}>
+              {system.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={documentId}
+          onChange={(event) => setDocumentId(event.target.value)}
+          disabled={documentsState.loading || documentsState.documents.length === 0}
+          className="h-11 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none disabled:opacity-60 focus:border-zinc-500"
+        >
+          {documentsState.documents.length === 0 ? (
+            <option value="">No documents</option>
+          ) : (
+            documentsState.documents.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                {doc.filePath.split("/").pop()} ({doc.extractionStatus}, chunks {doc._count.chunks})
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void loadChunks()}
+          disabled={!documentId || chunksState.loading}
+          className="h-10 rounded-lg bg-fuchsia-400 px-4 text-sm font-medium text-zinc-950 hover:bg-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {chunksState.loading ? "Loading chunks..." : "Load Chunks"}
+        </button>
+
+        {documentsState.loading ? <span className="text-xs text-zinc-400">Loading documents...</span> : null}
+        {documentsState.error ? <span className="text-xs text-rose-300">{documentsState.error}</span> : null}
+      </div>
+
+      {selectedDocument ? (
+        <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs">
+          <p className="text-zinc-300">
+            <span className="text-zinc-500">docId:</span> <code>{selectedDocument.id}</code>
+          </p>
+          <p className="mt-1 break-all text-zinc-300">
+            <span className="text-zinc-500">file:</span> {selectedDocument.filePath}
+          </p>
+          <p className="mt-1 text-zinc-300">
+            <span className="text-zinc-500">status:</span> {selectedDocument.extractionStatus}
+            {" • "}
+            <span className="text-zinc-500">chunks:</span> {selectedDocument._count.chunks}
+          </p>
+          {selectedDocument.extractionError ? (
+            <p className="mt-1 break-words text-amber-300">
+              <span className="text-zinc-500">error:</span> {selectedDocument.extractionError}
+            </p>
+          ) : null}
+          <p className="mt-2">
+            <a
+              href={`/api/documents/${selectedDocument.id}/chunks`}
+              className="text-zinc-300 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open chunks JSON
+            </a>
+          </p>
+        </div>
+      ) : null}
+
+      {chunksState.error ? (
+        <p className="mt-4 rounded-lg border border-rose-800 bg-rose-950/20 px-3 py-2 text-sm text-rose-200">
+          {chunksState.error}
+        </p>
+      ) : null}
+
+      {chunksState.payload?.ok && chunksState.payload.chunks ? (
+        <div className="mt-4 space-y-3">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300">
+            <span className="text-zinc-500">loaded chunks:</span> {chunksState.payload.chunks.length}
+            {" • "}
+            <span className="text-zinc-500">with embeddings:</span>{" "}
+            {chunksState.payload.chunks.filter((chunk) => chunk.hasEmbedding).length}
+          </div>
+
+          <ul className="space-y-2">
+            {chunksState.payload.chunks.map((chunk) => (
+              <li key={chunk.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                <p className="text-xs text-zinc-400">
+                  chunk {chunk.chunkIndex} • id <code>{chunk.id}</code>
+                  {chunk.pageNumber !== null ? ` • page ${chunk.pageNumber}` : ""}
+                  {chunk.hasEmbedding ? " • embedded" : " • no-embedding"}
+                </p>
+                {chunk.chapterHint ? (
+                  <p className="mt-1 text-xs text-zinc-300">
+                    <span className="text-zinc-500">chapter:</span> {chunk.chapterHint}
+                  </p>
+                ) : null}
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-zinc-800 bg-zinc-900/70 p-2 text-xs text-zinc-200">
+                  {chunk.content}
+                </pre>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
