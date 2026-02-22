@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
+import {
+  createSystem,
+  listSystems,
+  parseSystemName,
+} from "@/lib/server/systems";
 
 export async function GET() {
   try {
-    const systems = await prisma.system.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        createdAt: true,
-      },
-    });
-
+    const systems = await listSystems();
     return NextResponse.json({ ok: true, systems });
   } catch (error) {
     console.error("GET /api/systems failed", error);
@@ -25,31 +22,15 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as { name?: unknown };
-    const name =
-      typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
-
-    if (!name) {
-      return NextResponse.json(
-        { ok: false, error: "System name is required." },
-        { status: 400 },
-      );
-    }
-
-    const system = await prisma.system.create({
-      data: { name },
-      select: {
-        id: true,
-        name: true,
-        createdAt: true,
-      },
-    });
+    const name = parseSystemName(body.name);
+    const system = await createSystem(name);
 
     return NextResponse.json({ ok: true, system }, { status: 201 });
   } catch (error) {
     console.error("POST /api/systems failed", error);
     return NextResponse.json(
-      { ok: false, error: "Failed to create system." },
-      { status: 500 },
+      { ok: false, error: getErrorMessage(error, "Failed to create system.") },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }
