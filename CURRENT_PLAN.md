@@ -21,6 +21,11 @@ This checklist will be updated as we complete each step and get your approval.
 - [x] Update `apps/web` and workers to import from package.
 - [x] Update `apps/web/next.config.ts` to transpile the package.
 
+## Step 1.5 — PDF Metadata (Chapters/Outlines)
+- [ ] Extract PDF outlines/bookmarks when available.
+- [ ] Store chapter metadata (title + page range) for documents.
+- [ ] Use chapter metadata to improve grouping/labels.
+
 ## Step 2 — Prisma Schema + Migration
 - [x] Add `ChunkGroup`, `Entity`, `EntityRuleLink`, `EntityImage` models.
 - [x] Add chunk `kind/labels/groupId`.
@@ -28,9 +33,9 @@ This checklist will be updated as we complete each step and get your approval.
 - [x] Run migration and update Prisma client.
 
 ## Step 3 — Web App: Enqueue Entity Extraction
-- [ ] After chunking, store groups and chunk metadata.
-- [ ] Enqueue entity extraction job with document/system info.
-- [ ] Set document `entityStatus=queued` + progress fields.
+- [x] After chunking, store groups and chunk metadata.
+- [x] Enqueue entity extraction job with document/system info.
+- [x] Set document `entityStatus=queued` + progress fields.
 
 ## Step 4 — New `services/entity-worker`
 - [ ] Create worker service with BullMQ + Redis.

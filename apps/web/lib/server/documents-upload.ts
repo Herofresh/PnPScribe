@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { prisma } from "@/lib/prisma";
 import { replaceChunksForDocument } from "@/lib/server/chunks";
+import { enqueueEntityExtractionJob } from "@/lib/server/entity-queue";
 import { embedMissingChunksForDocument } from "@/lib/server/embeddings";
 import { HttpError } from "@/lib/server/http-error";
 import {
@@ -115,8 +116,11 @@ export async function uploadDocumentFromFormData(formData: FormData) {
   let ocrRequestedAt = document.ocrRequestedAt;
   let ocrCompletedAt = document.ocrCompletedAt;
   let chunkCount = 0;
+  let groupCount = 0;
   let embeddedCount = 0;
   let embeddingError: string | null = null;
+  let entityStatus: string | null = null;
+  let entityError: string | null = null;
 
   try {
     const extraction = await extractPdfText(absolutePath);
@@ -172,6 +176,7 @@ export async function uploadDocumentFromFormData(formData: FormData) {
 
     const chunkResult = await replaceChunksForDocument(document.id, extractedText);
     chunkCount = chunkResult.chunkCount;
+    groupCount = chunkResult.groupCount;
 
     if (chunkCount > 0) {
       try {
@@ -180,6 +185,55 @@ export async function uploadDocumentFromFormData(formData: FormData) {
       } catch (error) {
         embeddingError =
           error instanceof Error ? error.message.slice(0, 500) : "Embedding failed.";
+      }
+    }
+
+    if (chunkCount > 0) {
+      try {
+        await enqueueEntityExtractionJob({
+          documentId: document.id,
+          systemId: document.systemId,
+          absolutePdfPath: absolutePath,
+          requestedAt: new Date().toISOString(),
+        });
+
+        const updated = await prisma.document.update({
+          where: { id: document.id },
+          data: {
+            entityStatus: "queued",
+            entityError: null,
+            entityProgressMessage: "Queued for entity extraction.",
+            entityProgressUpdatedAt: new Date(),
+            entityExtractedCount: 0,
+            entityRuleLinkCount: 0,
+            entityImageCount: 0,
+          },
+          select: {
+            entityStatus: true,
+            entityError: true,
+          },
+        });
+
+        entityStatus = updated.entityStatus;
+        entityError = updated.entityError;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Entity queue failed.";
+        const updated = await prisma.document.update({
+          where: { id: document.id },
+          data: {
+            entityStatus: "failed",
+            entityError: message.slice(0, 500),
+            entityProgressMessage: "Queue failed.",
+            entityProgressUpdatedAt: new Date(),
+          },
+          select: {
+            entityStatus: true,
+            entityError: true,
+          },
+        });
+
+        entityStatus = updated.entityStatus;
+        entityError = updated.entityError;
       }
     }
   } catch (error) {
@@ -241,9 +295,12 @@ export async function uploadDocumentFromFormData(formData: FormData) {
       extractionStatus,
       extractionError,
       extractedAt,
+      entityStatus,
+      entityError,
     },
     processing: {
       chunkCount,
+      groupCount,
       embeddedCount,
       embeddingError,
     },
