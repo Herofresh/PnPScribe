@@ -16,10 +16,10 @@ This checklist will be updated as we complete each step and get your approval.
 - [x] Run `cd apps/web && npx prisma migrate dev`.
 
 ## Step 1 — Shared Ingestion Package (Chunking + Grouping)
-- [ ] Create `packages/ingestion` with shared `chunking.ts`.
-- [ ] Export chunk/group types + classifiers.
-- [ ] Update `apps/web` and workers to import from package.
-- [ ] Update `apps/web/next.config.ts` to transpile the package.
+- [x] Create `packages/ingestion` with shared `chunking.ts`.
+- [x] Export chunk/group types + classifiers.
+- [x] Update `apps/web` and workers to import from package.
+- [x] Update `apps/web/next.config.ts` to transpile the package.
 
 ## Step 2 — Prisma Schema + Migration
 - [ ] Add `ChunkGroup`, `Entity`, `EntityRuleLink`, `EntityImage` models.
