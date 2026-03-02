@@ -51,10 +51,10 @@ This checklist will be updated as we complete each step and get your approval.
 - [ ] Use chapter metadata to improve grouping/labels.
 
 ## Step 6 — APIs for Debug/UI
-- [ ] `GET /api/documents/[documentId]/groups`
-- [ ] `GET /api/systems/[systemId]/entities`
-- [ ] `GET /api/entities/[entityId]`
-- [ ] `GET /api/entities/[entityId]/rules`
+- [x] `GET /api/documents/[documentId]/groups`
+- [x] `GET /api/systems/[systemId]/entities`
+- [x] `GET /api/entities/[entityId]`
+- [x] `GET /api/entities/[entityId]/rules`
 
 ## Step 7 — UI Progress + Entity Visibility
 - [ ] Extend upload panel with group/entity counts + status.
