@@ -1,73 +1,41 @@
 import "server-only";
 
-import fs from "node:fs/promises";
-import { createRequire } from "node:module";
-
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import { prisma } from "@/lib/prisma";
 
-const require = createRequire(import.meta.url);
-
-const pdfjs = require("pdfjs-dist/legacy/build/pdf.mjs") as {
-  getDocument: (params: { data: Uint8Array }) => { promise: Promise<PDFDocumentProxy> };
-  GlobalWorkerOptions: { workerSrc?: string };
-};
+const execFileAsync = promisify(execFile);
 
 async function extractOutlineFromPdf(absolutePdfPath: string) {
-  if (!(pdfjs.GlobalWorkerOptions.workerSrc ?? "")) {
-    pdfjs.GlobalWorkerOptions.workerSrc = require.resolve(
-      "pdfjs-dist/legacy/build/pdf.worker.mjs",
-    );
+  const scriptPath = path.resolve(process.cwd(), "scripts", "extract-pdf-outline.mjs");
+
+  const result = await execFileAsync(process.execPath, [scriptPath, absolutePdfPath], {
+    cwd: process.cwd(),
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  if (!result.stdout) {
+    throw new Error(result.stderr || "PDF outline extraction produced no output.");
   }
 
-  const buffer = await fs.readFile(absolutePdfPath);
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
-  const pdf = await loadingTask.promise;
-
+  let parsed: unknown;
   try {
-    const outline = await pdf.getOutline();
-    if (!outline || !Array.isArray(outline)) {
-      return [] as Array<{
-        title: string;
-        pageNumber: number | null;
-        level: number;
-      }>;
-    }
-
-    const results: Array<{ title: string; pageNumber: number | null; level: number }> = [];
-
-    async function walk(nodes: any[], level: number) {
-      for (const node of nodes) {
-        const title = typeof node.title === "string" ? node.title.trim() : "";
-        let pageNumber: number | null = null;
-
-        if (node.dest) {
-          const dest = await pdf.getDestination(node.dest).catch(() => null);
-          if (dest) {
-            const [ref] = dest;
-            const pageIndex = await pdf.getPageIndex(ref).catch(() => null);
-            if (typeof pageIndex === "number") {
-              pageNumber = pageIndex + 1;
-            }
-          }
-        }
-
-        if (title) {
-          results.push({ title, pageNumber, level });
-        }
-
-        if (Array.isArray(node.items) && node.items.length > 0) {
-          await walk(node.items, level + 1);
-        }
-      }
-    }
-
-    await walk(outline, 0);
-    return results;
-  } finally {
-    await pdf.destroy();
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    throw new Error("PDF outline extraction returned invalid JSON output.");
   }
+
+  const outline =
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "outline" in parsed &&
+    Array.isArray((parsed as { outline: unknown }).outline)
+      ? ((parsed as { outline: Array<{ title: string; pageNumber: number | null; level: number }> }).outline ?? [])
+      : [];
+
+  return outline;
 }
 
 export async function refreshDocumentChapters(params: {

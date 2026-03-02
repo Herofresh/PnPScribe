@@ -4,16 +4,18 @@ import { createRequire } from "node:module";
 
 import { createCanvas } from "@napi-rs/canvas";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 GlobalWorkerOptions.workerSrc = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
 const standardFontDir = path.dirname(
   require.resolve("pdfjs-dist/standard_fonts/FoxitSerif.pfb"),
 );
-const standardFontDataUrl = pathToFileURL(standardFontDir + path.sep).toString();
-const cMapDir = path.dirname(require.resolve("pdfjs-dist/cmaps/Identity-H"));
-const cMapUrl = pathToFileURL(cMapDir + path.sep).toString();
+const standardFontDataUrl = standardFontDir + path.sep;
+const cMapDir = path.resolve(
+  path.dirname(require.resolve("pdfjs-dist/package.json")),
+  "cmaps",
+);
+const cMapUrl = cMapDir + path.sep;
 
 class NodeCanvasFactory {
   create(width: number, height: number) {
@@ -72,7 +74,7 @@ export async function extractEntityImages(params: {
     cMapUrl,
     cMapPacked: true,
     disableFontFace: true,
-    useSystemFonts: true,
+    useSystemFonts: false,
   });
   const pdf = await loadingTask.promise;
 

@@ -7,6 +7,7 @@ import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { replaceChunksForDocument } from "@/lib/server/chunks";
 import { enqueueEntityExtractionJob } from "@/lib/server/entity-queue";
+import { runEntityMetaAnalysis } from "@/lib/server/entity-meta";
 import { embedMissingChunksForDocument } from "@/lib/server/embeddings";
 import { HttpError } from "@/lib/server/http-error";
 import { refreshDocumentChapters } from "@/lib/server/pdf-metadata";
@@ -205,6 +206,17 @@ export async function uploadDocumentFromFormData(formData: FormData) {
 
     if (chunkCount > 0) {
       try {
+        console.log("[upload] entity meta analysis start", {
+          documentId: document.id,
+        });
+        await runEntityMetaAnalysis({
+          documentId: document.id,
+          absolutePdfPath: absolutePath,
+        });
+        console.log("[upload] entity meta analysis done", {
+          documentId: document.id,
+        });
+
         await enqueueEntityExtractionJob({
           documentId: document.id,
           systemId: document.systemId,

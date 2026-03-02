@@ -50,6 +50,11 @@ export async function resetQueuesAndStatus() {
       entityExtractedCount: 0,
       entityRuleLinkCount: 0,
       entityImageCount: 0,
+      entityMetaStatus: "idle",
+      entityMetaError: null,
+      entityMetaModel: null,
+      entityMetaJson: null,
+      entityMetaUpdatedAt: null,
     },
   });
 

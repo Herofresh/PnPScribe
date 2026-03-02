@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { config } from "./config.js";
 import {
   clearEntitiesForDocument,
+  getEntityMeta,
   listCandidateGroups,
   listChunksForGroup,
   listNearbyChunks,
@@ -20,7 +21,7 @@ import { extractEntityImages } from "./pdf-images.js";
 
 const openai = new OpenAI({ apiKey: config.openAiApiKey });
 
-type CandidateType = "monster" | "item";
+type CandidateType = string;
 
 interface NormalizedEntity {
   type: CandidateType;
@@ -29,6 +30,53 @@ interface NormalizedEntity {
   confidence: number;
   coreData: Record<string, unknown>;
   rawData: Record<string, unknown> | null;
+}
+
+interface MetaEntityType {
+  name?: unknown;
+  aliases?: unknown;
+  signals?: unknown;
+  example_sections?: unknown;
+  confidence?: unknown;
+}
+
+function extractEntityTypes(meta: unknown): Array<{ name: string; aliases: string[] }> {
+  if (!meta || typeof meta !== "object") {
+    return [];
+  }
+  const rawTypes = (meta as { entity_types?: unknown }).entity_types;
+  if (!Array.isArray(rawTypes)) {
+    return [];
+  }
+  return rawTypes
+    .map((entry) => {
+      const typed = entry as MetaEntityType;
+      const name = typeof typed.name === "string" ? typed.name.trim() : "";
+      if (!name) {
+        return null;
+      }
+      const aliases = Array.isArray(typed.aliases)
+        ? typed.aliases.filter((alias): alias is string => typeof alias === "string")
+        : [];
+      return { name, aliases };
+    })
+    .filter((entry): entry is { name: string; aliases: string[] } => Boolean(entry));
+}
+
+function pickEntityType(input: string | undefined, allowed: Array<{ name: string; aliases: string[] }>) {
+  if (!input) {
+    return null;
+  }
+  const normalized = input.trim().toLowerCase();
+  for (const entry of allowed) {
+    if (entry.name.toLowerCase() === normalized) {
+      return entry.name;
+    }
+    if (entry.aliases.some((alias) => alias.toLowerCase() === normalized)) {
+      return entry.name;
+    }
+  }
+  return null;
 }
 
 function slugify(input: string) {
@@ -65,9 +113,18 @@ function inferNameFromTitle(group: ChunkGroupRecord, content: string) {
   return (firstLine ?? "Unknown Entity").slice(0, 120);
 }
 
-async function normalizeEntityWithLlm(group: ChunkGroupRecord, content: string): Promise<NormalizedEntity | null> {
+async function normalizeEntityWithLlm(
+  group: ChunkGroupRecord,
+  content: string,
+  meta: { entityTypes: Array<{ name: string; aliases: string[] }> },
+): Promise<NormalizedEntity | null> {
   const guessedType: CandidateType = group.kind === "item_section" ? "item" : "monster";
   const fallbackName = inferNameFromTitle(group, content);
+  const allowedTypes = meta.entityTypes;
+  const typeHint =
+    allowedTypes.length > 0
+      ? `Allowed entity types: ${allowedTypes.map((entry) => entry.name).join(", ")}.`
+      : "";
 
   try {
     const response = await openai.responses.create({
@@ -78,7 +135,13 @@ async function normalizeEntityWithLlm(group: ChunkGroupRecord, content: string):
         {
           role: "system",
           content:
-            "Extract one RPG entity from text. Return strict JSON only. No markdown. Schema: {entityType:'monster'|'item',name:string,aliases:string[],confidence:number,coreData:object,notes:string[]}",
+            [
+              "Extract one RPG entity from text. Return strict JSON only. No markdown.",
+              "Schema: {entityType:string,name:string,aliases:string[],confidence:number,coreData:object,notes:string[]}",
+              typeHint,
+            ]
+              .filter(Boolean)
+              .join(" "),
         },
         {
           role: "user",
@@ -118,7 +181,8 @@ async function normalizeEntityWithLlm(group: ChunkGroupRecord, content: string):
       coreData?: unknown;
     };
 
-    const entityType = parsed.entityType === "item" ? "item" : "monster";
+    const rawEntityType = typeof parsed.entityType === "string" ? parsed.entityType : undefined;
+    const entityType = pickEntityType(rawEntityType, allowedTypes) ?? guessedType;
     const name =
       typeof parsed.name === "string" && parsed.name.trim().length > 0
         ? parsed.name.trim().slice(0, 140)
@@ -179,7 +243,15 @@ export async function processEntityJob(
   params?: { onProgress?: (message: string, extractedCount: number, ruleLinkCount: number) => Promise<void> },
 ) {
   await setEntityProcessing(payload.documentId);
-  await clearEntitiesForDocument(payload.documentId);
+  await clearEntitiesForDocument(payload.documentId, payload.systemId);
+
+  const meta = {
+    entityTypes: extractEntityTypes(await getEntityMeta(payload.documentId)),
+  };
+  console.log("[entity-worker] meta analysis loaded", {
+    documentId: payload.documentId,
+    entityTypes: meta.entityTypes.map((entry) => entry.name),
+  });
 
   const groups = await listCandidateGroups(payload.documentId);
   let extractedEntities = 0;
@@ -194,7 +266,7 @@ export async function processEntityJob(
     }
 
     const content = chunks.map((chunk) => chunk.content).join("\n\n");
-    const normalized = await normalizeEntityWithLlm(group, content);
+    const normalized = await normalizeEntityWithLlm(group, content, meta);
     if (!normalized || normalized.confidence < config.confidenceThreshold) {
       continue;
     }
@@ -260,24 +332,31 @@ export async function processEntityJob(
 
     if (config.imageExtractionEnabled) {
       try {
-        const images = await extractEntityImages({
-          systemId: payload.systemId,
-          documentId: payload.documentId,
-          entityId,
-          absolutePdfPath: payload.absolutePdfPath,
-          pageStart: group.startPage,
-          pageEnd: group.endPage,
-          maxPages: Math.max(1, config.imageMaxPages),
-          targetWidth: Math.max(200, config.imageTargetWidth),
-        });
+        if (group.startPage == null && group.endPage == null) {
+          console.warn("[entity-worker] skipping image extraction (no page numbers)", {
+            entityId,
+            groupId: group.id,
+          });
+        } else {
+          const images = await extractEntityImages({
+            systemId: payload.systemId,
+            documentId: payload.documentId,
+            entityId,
+            absolutePdfPath: payload.absolutePdfPath,
+            pageStart: group.startPage,
+            pageEnd: group.endPage,
+            maxPages: Math.max(1, config.imageMaxPages),
+            targetWidth: Math.max(200, config.imageTargetWidth),
+          });
 
-        const imageInserted = await insertEntityImages({
-          entityId,
-          documentId: payload.documentId,
-          images,
-        });
+          const imageInserted = await insertEntityImages({
+            entityId,
+            documentId: payload.documentId,
+            images,
+          });
 
-        linkedImages += imageInserted;
+          linkedImages += imageInserted;
+        }
       } catch (error) {
         console.error("[entity-worker] image extraction failed", {
           entityId,

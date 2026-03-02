@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 
 import { Pool } from "pg";
 
@@ -13,6 +15,7 @@ export interface DocumentRecord {
   systemId: string;
   filePath: string;
   entityStatus: string | null;
+  entityMetaJson?: unknown;
 }
 
 export interface ChunkGroupRecord {
@@ -35,7 +38,7 @@ export interface ChunkRecord {
 export async function getDocument(documentId: string) {
   const res = await pool.query<DocumentRecord>(
     `
-    SELECT "id", "systemId", "filePath", "entityStatus"
+    SELECT "id", "systemId", "filePath", "entityStatus", "entityMetaJson"
     FROM "Document"
     WHERE "id" = $1
     `,
@@ -43,6 +46,18 @@ export async function getDocument(documentId: string) {
   );
 
   return res.rows[0] ?? null;
+}
+
+export async function getEntityMeta(documentId: string) {
+  const res = await pool.query<{ entityMetaJson: unknown }>(
+    `
+    SELECT "entityMetaJson"
+    FROM "Document"
+    WHERE "id" = $1
+    `,
+    [documentId],
+  );
+  return res.rows[0]?.entityMetaJson ?? null;
 }
 
 export async function setEntityProcessing(documentId: string) {
@@ -158,13 +173,16 @@ export async function listNearbyChunks(documentId: string, start: number, end: n
   return res.rows;
 }
 
-export async function clearEntitiesForDocument(documentId: string) {
+export async function clearEntitiesForDocument(documentId: string, systemId: string) {
   await pool.query(
     `DELETE FROM "EntityRuleLink" WHERE "entityId" IN (SELECT "id" FROM "Entity" WHERE "documentId" = $1)`,
     [documentId],
   );
   await pool.query(`DELETE FROM "EntityImage" WHERE "documentId" = $1`, [documentId]);
   await pool.query(`DELETE FROM "Entity" WHERE "documentId" = $1`, [documentId]);
+
+  const entityDir = path.resolve(config.projectRoot, "uploads", systemId, "entities", documentId);
+  await rm(entityDir, { recursive: true, force: true });
 }
 
 export async function upsertEntity(params: {

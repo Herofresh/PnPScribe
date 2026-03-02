@@ -24,7 +24,7 @@ async function main() {
   const parser = new PDFParse({ data });
 
   try {
-    const result = await parser.getText();
+    const result = await parser.getText({ pageJoiner: "\f" });
     const text = typeof result?.text === "string" ? result.text : "";
     const pageCount =
       typeof result?.total === "number"

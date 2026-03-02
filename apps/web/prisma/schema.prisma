@@ -38,6 +38,11 @@ model Document {
   entityExtractedCount  Int?
   entityRuleLinkCount   Int?
   entityImageCount      Int?
+  entityMetaStatus      String    @default("idle")
+  entityMetaError       String?
+  entityMetaModel       String?
+  entityMetaJson        Json?
+  entityMetaUpdatedAt   DateTime?
   extractionStatus String    @default("pending")
   extractionError  String?
   extractedAt      DateTime?
