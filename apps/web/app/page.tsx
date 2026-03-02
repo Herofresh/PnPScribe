@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { ChunkDebugPanel } from "@/app/chunk-debug-panel";
 import { DocumentUploadPanel } from "@/app/document-upload-panel";
+import { EntitiesDebugPanel } from "@/app/entities-debug-panel";
 import { prisma } from "@/lib/prisma";
 import { RulesAskPanel } from "@/app/rules-ask-panel";
 
@@ -39,6 +40,16 @@ export default async function Home() {
       ocrProgressCurrentPage: number | null;
       ocrProgressTotalPages: number | null;
       ocrProgressMessage: string | null;
+      entityStatus: string;
+      entityError: string | null;
+      entityProgressMessage: string | null;
+      entityProgressUpdatedAt: Date | null;
+      entityExtractedCount: number | null;
+      entityRuleLinkCount: number | null;
+      entityImageCount: number | null;
+      entityMetaStatus: string;
+      entityMetaError: string | null;
+      entityMetaUpdatedAt: Date | null;
       extractionStatus: string;
       extractionError: string | null;
       extractedAt: Date | null;
@@ -77,6 +88,16 @@ export default async function Home() {
             ocrProgressCurrentPage: true,
             ocrProgressTotalPages: true,
             ocrProgressMessage: true,
+            entityStatus: true,
+            entityError: true,
+            entityProgressMessage: true,
+            entityProgressUpdatedAt: true,
+            entityExtractedCount: true,
+            entityRuleLinkCount: true,
+            entityImageCount: true,
+            entityMetaStatus: true,
+            entityMetaError: true,
+            entityMetaUpdatedAt: true,
             extractionStatus: true,
             extractionError: true,
             extractedAt: true,
@@ -236,6 +257,33 @@ export default async function Home() {
                               {document.ocrProgressMessage ? ` • ${document.ocrProgressMessage}` : ""}
                             </p>
                             <p className="mt-1 text-zinc-300">
+                              <span className="text-zinc-500">entities:</span>{" "}
+                              {document.entityStatus}
+                              {document.entityProgressMessage ? ` • ${document.entityProgressMessage}` : ""}
+                              {document.entityProgressUpdatedAt
+                                ? ` • updated ${document.entityProgressUpdatedAt.toISOString()}`
+                                : ""}
+                            </p>
+                            <p className="mt-1 text-zinc-300">
+                              <span className="text-zinc-500">entity meta:</span>{" "}
+                              {document.entityMetaStatus}
+                              {document.entityMetaUpdatedAt
+                                ? ` • updated ${document.entityMetaUpdatedAt.toISOString()}`
+                                : ""}
+                              {document.entityMetaError ? ` • ${document.entityMetaError}` : ""}
+                            </p>
+                            <p className="mt-1 text-zinc-300">
+                              <span className="text-zinc-500">entity counts:</span>{" "}
+                              extracted={document.entityExtractedCount ?? 0}
+                              {" • "}rules={document.entityRuleLinkCount ?? 0}
+                              {" • "}images={document.entityImageCount ?? 0}
+                            </p>
+                            {document.entityError ? (
+                              <p className="mt-1 break-words text-amber-300">
+                                <span className="text-zinc-500">entity error:</span> {document.entityError}
+                              </p>
+                            ) : null}
+                            <p className="mt-1 text-zinc-300">
                               <span className="text-zinc-500">extractedAt:</span>{" "}
                               {document.extractedAt ? document.extractedAt.toISOString() : "null"}
                             </p>
@@ -244,6 +292,14 @@ export default async function Home() {
                                 <span className="text-zinc-500">error:</span> {document.extractionError}
                               </p>
                             ) : null}
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                              <a
+                                href={`/api/documents/${document.id}/entities/meta`}
+                                className="text-zinc-300 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
+                              >
+                                Entity Meta JSON
+                              </a>
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -266,6 +322,15 @@ export default async function Home() {
 
         {!dbError && systems.length > 0 ? (
           <ChunkDebugPanel
+            systems={systems.map((system) => ({
+              id: system.id,
+              name: system.name,
+            }))}
+          />
+        ) : null}
+
+        {!dbError && systems.length > 0 ? (
+          <EntitiesDebugPanel
             systems={systems.map((system) => ({
               id: system.id,
               name: system.name,

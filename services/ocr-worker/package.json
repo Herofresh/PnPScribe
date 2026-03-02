@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@pnpscribe/ingestion": "file:../../packages/ingestion",
     "@napi-rs/canvas": "^0.1.80",
     "bullmq": "^5.58.5",
     "dotenv": "^16.6.1",
