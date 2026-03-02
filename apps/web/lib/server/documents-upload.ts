@@ -9,6 +9,7 @@ import { replaceChunksForDocument } from "@/lib/server/chunks";
 import { enqueueEntityExtractionJob } from "@/lib/server/entity-queue";
 import { embedMissingChunksForDocument } from "@/lib/server/embeddings";
 import { HttpError } from "@/lib/server/http-error";
+import { refreshDocumentChapters } from "@/lib/server/pdf-metadata";
 import {
   assessOcrFallbackNeed,
   clearDocumentOcrNeed,
@@ -121,6 +122,7 @@ export async function uploadDocumentFromFormData(formData: FormData) {
   let embeddingError: string | null = null;
   let entityStatus: string | null = null;
   let entityError: string | null = null;
+  let chapterCount = 0;
 
   try {
     const extraction = await extractPdfText(absolutePath);
@@ -177,6 +179,19 @@ export async function uploadDocumentFromFormData(formData: FormData) {
     const chunkResult = await replaceChunksForDocument(document.id, extractedText);
     chunkCount = chunkResult.chunkCount;
     groupCount = chunkResult.groupCount;
+
+    try {
+      const chapterResult = await refreshDocumentChapters({
+        documentId: document.id,
+        absolutePdfPath: absolutePath,
+      });
+      chapterCount = chapterResult.chapterCount;
+    } catch (error) {
+      console.warn("Failed to extract PDF outline", {
+        documentId: document.id,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
 
     if (chunkCount > 0) {
       try {
@@ -301,6 +316,7 @@ export async function uploadDocumentFromFormData(formData: FormData) {
     processing: {
       chunkCount,
       groupCount,
+      chapterCount,
       embeddedCount,
       embeddingError,
     },

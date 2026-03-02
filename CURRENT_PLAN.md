@@ -46,9 +46,9 @@ This checklist will be updated as we complete each step and get your approval.
 - [x] Guard with env flag (default true).
 
 ## Step 5.5 — PDF Metadata (Chapters/Outlines)
-- [ ] Extract PDF outlines/bookmarks when available.
-- [ ] Store chapter metadata (title + page range) for documents.
-- [ ] Use chapter metadata to improve grouping/labels.
+- [x] Extract PDF outlines/bookmarks when available.
+- [x] Store chapter metadata (title + page range) for documents.
+- [x] Use chapter metadata to improve grouping/labels.
 
 ## Step 6 — APIs for Debug/UI
 - [x] `GET /api/documents/[documentId]/groups`

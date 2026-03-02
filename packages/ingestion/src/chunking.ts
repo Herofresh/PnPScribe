@@ -30,6 +30,12 @@ export interface ClassifiedChunk extends TextChunk {
   groupIndex: number;
 }
 
+export interface ChapterMeta {
+  title: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+}
+
 const DEFAULT_CHUNK_SIZE = 1200;
 const DEFAULT_CHUNK_OVERLAP = 200;
 const DEFAULT_MIN_CHUNK_SIZE = 300;
@@ -110,7 +116,10 @@ export function chunkText(
   return chunks;
 }
 
-export function classifyChunksAndBuildGroups(chunks: TextChunk[]): {
+export function classifyChunksAndBuildGroups(
+  chunks: TextChunk[],
+  chapters?: ChapterMeta[],
+): {
   groups: ChunkGroupPlan[];
   chunks: ClassifiedChunk[];
 } {
@@ -121,18 +130,27 @@ export function classifyChunksAndBuildGroups(chunks: TextChunk[]): {
   const groups: ChunkGroupPlan[] = [];
   const classified: ClassifiedChunk[] = [];
 
+  const chapterByPage = buildChapterLookup(chapters ?? []);
+  const firstChapter = findChapterForChunk(chunks[0]!, chapterByPage);
+
   let currentGroupKind: ChunkGroupKind = inferGroupKind(chunks[0]!);
   let currentTitle = pickTitle(chunks[0]!);
-  let currentChapterHint = chunks[0]!.chapterHint;
+  let currentChapterHint = firstChapter?.title ?? chunks[0]!.chapterHint;
+  let currentChapterTitle = firstChapter?.title ?? null;
   let groupStart = 0;
   let groupIndex = 0;
 
   for (let i = 0; i < chunks.length; i += 1) {
     const chunk = chunks[i]!;
+    const chapter = findChapterForChunk(chunk, chapterByPage);
+    const chapterTitle = chapter?.title ?? null;
     const inferredKind = inferGroupKind(chunk);
     const looksLikeBoundary =
       i > 0 &&
-      (chunk.chapterHint !== null || inferredKind !== currentGroupKind || chunkStartsHeading(chunk));
+      (chunk.chapterHint !== null ||
+        inferredKind !== currentGroupKind ||
+        chunkStartsHeading(chunk) ||
+        chapterTitle !== currentChapterTitle);
 
     if (looksLikeBoundary) {
       const previousChunk = chunks[i - 1]!;
@@ -150,13 +168,14 @@ export function classifyChunksAndBuildGroups(chunks: TextChunk[]): {
       groupStart = i;
       currentGroupKind = inferredKind;
       currentTitle = pickTitle(chunk);
-      currentChapterHint = chunk.chapterHint;
+      currentChapterHint = chapterTitle ?? chunk.chapterHint;
+      currentChapterTitle = chapterTitle;
     }
 
     classified.push({
       ...chunk,
       kind: mapGroupKindToChunkKind(inferredKind),
-      labels: buildChunkLabels(chunk, inferredKind),
+      labels: buildChunkLabels(chunk, inferredKind, chapterTitle),
       groupIndex,
     });
   }
@@ -308,10 +327,45 @@ function pickTitle(chunk: TextChunk): string | null {
   return line ? line.slice(0, 140) : null;
 }
 
-function buildChunkLabels(chunk: TextChunk, kind: ChunkGroupKind): Record<string, unknown> {
+function buildChunkLabels(
+  chunk: TextChunk,
+  kind: ChunkGroupKind,
+  chapterTitle: string | null,
+): Record<string, unknown> {
   return {
     inferredKind: kind,
     hasChapterHint: Boolean(chunk.chapterHint),
+    chapterTitle,
     textLength: chunk.content.length,
   };
+}
+
+function buildChapterLookup(chapters: ChapterMeta[]) {
+  const normalized = chapters
+    .map((entry) => ({
+      title: entry.title,
+      pageStart: entry.pageStart ?? null,
+      pageEnd: entry.pageEnd ?? null,
+    }))
+    .filter((entry) => entry.title && entry.pageStart !== null)
+    .sort((a, b) => (a.pageStart ?? 0) - (b.pageStart ?? 0));
+
+  return normalized;
+}
+
+function findChapterForChunk(chunk: TextChunk, chapters: ChapterMeta[]) {
+  if (chapters.length === 0 || chunk.pageNumber === null) {
+    return null;
+  }
+
+  for (let i = chapters.length - 1; i >= 0; i -= 1) {
+    const entry = chapters[i]!;
+    if (entry.pageStart !== null && chunk.pageNumber >= entry.pageStart) {
+      if (entry.pageEnd === null || chunk.pageNumber <= entry.pageEnd) {
+        return entry;
+      }
+    }
+  }
+
+  return null;
 }

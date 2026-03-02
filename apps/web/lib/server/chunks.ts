@@ -13,7 +13,12 @@ type TransactionClient = Parameters<TransactionFn>[0];
 
 export async function replaceChunksForDocument(documentId: string, text: string) {
   const baseChunks = chunkText(text);
-  const planned = classifyChunksAndBuildGroups(baseChunks);
+  const chapters = await prisma.documentChapter.findMany({
+    where: { documentId },
+    select: { title: true, pageStart: true, pageEnd: true },
+    orderBy: { pageStart: "asc" },
+  });
+  const planned = classifyChunksAndBuildGroups(baseChunks, chapters);
 
   await prisma.$transaction(async (tx: TransactionClient) => {
     await tx.chunk.deleteMany({ where: { documentId } });

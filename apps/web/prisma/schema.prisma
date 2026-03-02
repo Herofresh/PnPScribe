@@ -47,6 +47,7 @@ model Document {
   groups           ChunkGroup[]
   entities         Entity[]
   entityImages     EntityImage[]
+  chapters         DocumentChapter[]
   createdAt        DateTime  @default(now())
 }
 
@@ -142,4 +143,17 @@ model EntityImage {
   createdAt  DateTime @default(now())
 
   @@index([entityId])
+}
+
+model DocumentChapter {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  title       String
+  pageStart   Int?
+  pageEnd     Int?
+  level       Int?
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
 }
