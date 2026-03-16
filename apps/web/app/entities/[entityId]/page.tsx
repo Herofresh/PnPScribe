@@ -1,4 +1,8 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
 import { getEntityById, getEntityRuleLinks } from "@/lib/server/entities";
+import { requireOwnedEntity } from "@/lib/server/auth/access";
 import { HttpError } from "@/lib/server/http-error";
 
 export default async function EntityDetailPage({
@@ -9,6 +13,15 @@ export default async function EntityDetailPage({
   const { entityId } = await params;
   if (!entityId) {
     throw new HttpError(400, "entityId is required.");
+  }
+
+  try {
+    await requireOwnedEntity(entityId);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 401) {
+      redirect("/login");
+    }
+    throw error;
   }
 
   const entity = await getEntityById(entityId);
@@ -56,7 +69,7 @@ export default async function EntityDetailPage({
                 <li key={link.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs">
                   <p className="text-zinc-400">
                     {link.relation} • conf {link.confidence.toFixed(2)} • chunk {link.chunk.chunkIndex}
-                    {link.chunk.pageNumber ? ` • page ${link.chunk.pageNumber}` : ""}
+                    {link.chunk.pageNumber != null ? ` • page ${link.chunk.pageNumber}` : ""}
                   </p>
                   <p className="mt-2 text-zinc-200 whitespace-pre-wrap">{link.chunk.content}</p>
                 </li>
@@ -82,9 +95,9 @@ export default async function EntityDetailPage({
         </section>
 
         <p className="text-xs text-zinc-500">
-          <a href="/" className="underline decoration-zinc-700 underline-offset-2">
+          <Link href="/" className="underline decoration-zinc-700 underline-offset-2">
             Back to dashboard
-          </a>
+          </Link>
         </p>
       </div>
     </main>

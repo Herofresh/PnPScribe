@@ -1,5 +1,6 @@
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ENTITY_QUEUE_NAME } from "@/lib/server/entity-queue";
 import { OCR_QUEUE_NAME } from "@/lib/server/ocr-queue";
@@ -53,7 +54,7 @@ export async function resetQueuesAndStatus() {
       entityMetaStatus: "idle",
       entityMetaError: null,
       entityMetaModel: null,
-      entityMetaJson: null,
+      entityMetaJson: Prisma.JsonNull,
       entityMetaUpdatedAt: null,
     },
   });

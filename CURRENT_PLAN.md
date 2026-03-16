@@ -1,65 +1,119 @@
-# PnPScribe — Current Plan (Step-by-step, Approval Required)
+# PnPScribe — Current Plan
 
-This checklist will be updated as we complete each step and get your approval.
+This plan replaces the earlier entity-extraction rollout plan as the active product scope.
 
-## Decisions Locked In
-- [x] Entity extraction is **heuristic + LLM** hybrid.
-- [x] Extraction runs in a **background job** with progress tracking.
-- [x] Image extraction is **ON by default**.
-- [x] New **entity worker service** (separate from OCR).
-- [x] Future scope: add **NPC/Characters** entity type later.
+## Scope Locked In
+- A `GM` is the owner of a system and can create systems, create groups, and invite players.
+- A normal player account exists first, with a later option to enable `GM mode`.
+- `GM mode` means the user can also create and own systems/groups. This is planned as a future settings upgrade and may later be paywalled.
+- Initial onboarding and invitations use invite links, not real email delivery.
+- Deployment should be done in small, understandable steps with Hetzner as the target host.
 
-## Step 0 — Setup + Migrations (First approval step)
-- [x] Add root setup script (if missing) to install deps in root/apps/workers.
-- [x] Run `npm run setup`.
-- [x] Add Prisma migration for grouping/entities schema. (Completed in Step 2)
-- [x] Run `cd apps/web && npx prisma migrate dev`.
+## Product Direction
 
-## Step 1 — Shared Ingestion Package (Chunking + Grouping)
-- [x] Create `packages/ingestion` with shared `chunking.ts`.
-- [x] Export chunk/group types + classifiers.
-- [x] Update `apps/web` and workers to import from package.
-- [x] Update `apps/web/next.config.ts` to transpile the package.
+### GM capabilities
+- Create and own systems.
+- Upload files to a system.
+- Ask system-wide rules questions in a chat interface.
+- Create groups/parties inside a system.
+- Invite players to groups with invite links.
+- View player profiles relevant to their systems/groups.
 
-## Step 2 — Prisma Schema + Migration
-- [x] Add `ChunkGroup`, `Entity`, `EntityRuleLink`, `EntityImage` models.
-- [x] Add chunk `kind/labels/groupId`.
-- [x] Add document entity progress fields.
-- [x] Run migration and update Prisma client.
+### Player capabilities
+- See all systems/groups they are invited to.
+- Upload files for their character.
+- Ask game rules questions.
+- Ask character-specific questions grounded in their uploaded character files.
 
-## Step 3 — Web App: Enqueue Entity Extraction
-- [x] After chunking, store groups and chunk metadata.
-- [x] Enqueue entity extraction job with document/system info.
-- [x] Set document `entityStatus=queued` + progress fields.
+### Entity analysis direction
+- Expand document meta analysis into a stronger indexed catalog of entity types.
+- Store where likely entities appear in the file by page/section/group/chunk.
+- Use that catalog to improve future extraction passes for items, creatures, and other entity types.
 
-## Step 4 — New `services/entity-worker`
-- [x] Create worker service with BullMQ + Redis.
-- [x] Process groups (monster/item), normalize entities via LLM.
-- [x] Store entities + rule links.
-- [x] Update progress fields throughout.
-- [x] Mark success/failure.
+## Phase 1 — Data Model + Auth Foundation
+- [ ] Design Prisma models for `User`, `Account`, `Session`, `InviteLink`, `SystemMembership`, `Group`, `GroupMembership`, and character documents.
+- [ ] Decide the minimum role model:
+  - `player`
+  - `gm_enabled`
+- [ ] Add authentication with:
+  - email + password
+  - Google login
+- [ ] Add session handling and protected routes.
+- [ ] Add a simple profile/settings surface.
 
-## Step 5 — Entity Image Extraction (Default ON)
-- [x] Extract page renders using `pdfjs-dist`.
-- [x] Store PNGs under `uploads/{systemId}/entities/{documentId}/{entityId}`.
-- [x] Create `EntityImage` rows.
-- [x] Guard with env flag (default true).
+## Phase 2 — Ownership + Permissions
+- [ ] Make systems owned by a user.
+- [ ] Restrict system creation to GM-enabled users.
+- [ ] Add system memberships and group memberships.
+- [ ] Add permission checks to all relevant API routes:
+  - system creation
+  - uploads
+  - rules ask
+  - group creation
+  - invite creation
+- [ ] Keep the authorization rules simple and explicit.
 
-## Step 5.5 — PDF Metadata (Chapters/Outlines)
-- [x] Extract PDF outlines/bookmarks when available.
-- [x] Store chapter metadata (title + page range) for documents.
-- [x] Use chapter metadata to improve grouping/labels.
+## Phase 3 — Invites + Groups
+- [ ] Add group/party creation within a system.
+- [ ] Add invite-link generation for players.
+- [ ] Add invite acceptance flow for:
+  - existing users
+  - new users
+- [ ] Add a GM view for group membership and player summaries.
 
-## Step 6 — APIs for Debug/UI
-- [x] `GET /api/documents/[documentId]/groups`
-- [x] `GET /api/systems/[systemId]/entities`
-- [x] `GET /api/entities/[entityId]`
-- [x] `GET /api/entities/[entityId]/rules`
+## Phase 4 — Chat Surfaces
+- [ ] Replace the current MVP ask flow with stored chat threads/messages.
+- [ ] Add system-level rules chat for GMs and eligible players.
+- [ ] Add player character chat grounded in character-specific uploads.
+- [ ] Keep rules chat and character chat as separate retrieval scopes.
 
-## Step 7 — UI Progress + Entity Visibility
-- [x] Extend upload panel with group/entity counts + status.
-- [x] Add simple entity list view for debugging.
-- [ ] Add UI testing checklist (upload → entities → rules → images).
+## Phase 5 — Character Documents
+- [ ] Add character-level document ownership under a player.
+- [ ] Add upload flow for character sheets / character reference files.
+- [ ] Index character files separately from system rulebooks.
+- [ ] Add retrieval mode that combines:
+  - game/system rules
+  - player character context
 
-## Later (Not Now)
-- [ ] NPC/Characters entity extraction + rules linking.
+## Phase 6 — Entity Meta Index V2
+- [ ] Upgrade document `entityMetaJson` from a loose type summary to a reusable index.
+- [ ] Store:
+  - detected entity types
+  - aliases
+  - confidence
+  - section titles
+  - page ranges
+  - chunk/group references
+  - detection signals
+- [ ] Use the meta index to guide later extraction passes.
+- [ ] Add debug/admin visibility for the indexed results.
+
+## Phase 7 — Deployment in Small Steps
+- [ ] Prepare the app for production config:
+  - environment variables
+  - build/start commands
+  - persistent uploads
+- [ ] Create a simple Docker Compose production setup for:
+  - web
+  - postgres
+  - redis
+  - ocr-worker
+  - entity-worker
+- [ ] Add reverse proxy + HTTPS.
+- [ ] Provision a Hetzner server.
+- [ ] Point the domain to the server.
+- [ ] Deploy once locally reproducible.
+
+## Recommended Implementation Order
+1. Auth + Prisma user model
+2. System ownership + permissions
+3. Groups + invite links
+4. Stored chat threads/messages
+5. Character uploads + character-aware retrieval
+6. Entity meta index v2
+7. Hetzner deployment
+
+## Notes
+- Deployment should wait until auth and permissions are at least minimally in place. Exposing the current single-user MVP online would create avoidable cleanup work.
+- Google login is useful, but email/password should be implemented first if we want the fastest path through auth and testing.
+- Real email sending can be added later once invite links and account flows are stable.

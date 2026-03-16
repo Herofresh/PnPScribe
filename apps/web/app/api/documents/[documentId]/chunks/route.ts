@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireOwnedDocument } from "@/lib/server/auth/access";
 import {
   listChunksForDocument,
   parseDocumentId,
@@ -13,6 +14,7 @@ export async function GET(
   try {
     const { documentId } = await context.params;
     const parsedDocumentId = parseDocumentId(documentId);
+    await requireOwnedDocument(parsedDocumentId);
     const result = await listChunksForDocument(parsedDocumentId);
 
     return NextResponse.json({

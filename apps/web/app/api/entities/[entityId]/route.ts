@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireOwnedEntity } from "@/lib/server/auth/access";
 import { getEntityById } from "@/lib/server/entities";
 import { HttpError } from "@/lib/server/http-error";
 import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
@@ -20,6 +21,7 @@ export async function GET(
   try {
     const { entityId } = await context.params;
     const parsedEntityId = parseEntityId(entityId);
+    await requireOwnedEntity(parsedEntityId);
     const entity = await getEntityById(parsedEntityId);
 
     return NextResponse.json({ ok: true, entity });

@@ -5,6 +5,7 @@ import {
   answerRulesQuestion,
   parseRulesQuestion,
 } from "@/lib/server/rules-query";
+import { requireOwnedSystem } from "@/lib/server/auth/access";
 import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
 
 export async function POST(
@@ -13,6 +14,7 @@ export async function POST(
 ) {
   try {
     const { systemId } = await context.params;
+    await requireOwnedSystem(systemId);
     const body = (await req.json()) as { question?: unknown; tier?: unknown };
     const question = parseRulesQuestion(body.question);
     const tier =

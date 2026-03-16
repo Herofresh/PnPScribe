@@ -4,6 +4,7 @@ import {
   listEntitiesForSystem,
   parseEntityType,
 } from "@/lib/server/entities";
+import { requireOwnedSystem } from "@/lib/server/auth/access";
 import { parseSystemId } from "@/lib/server/documents";
 import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
 
@@ -14,6 +15,7 @@ export async function GET(
   try {
     const { systemId } = await context.params;
     const parsedSystemId = parseSystemId(systemId);
+    await requireOwnedSystem(parsedSystemId);
     const url = new URL(req.url);
 
     const type = parseEntityType(url.searchParams.get("type"));

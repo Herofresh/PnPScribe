@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireOwnedDocument } from "@/lib/server/auth/access";
 import { parseDocumentId } from "@/lib/server/document-chunks";
 import { prisma } from "@/lib/prisma";
 import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
@@ -11,6 +12,7 @@ export async function GET(
   try {
     const { documentId } = await context.params;
     const parsedDocumentId = parseDocumentId(documentId);
+    await requireOwnedDocument(parsedDocumentId);
 
     const chapters = await prisma.documentChapter.findMany({
       where: { documentId: parsedDocumentId },

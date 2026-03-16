@@ -3,8 +3,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/server/http-error";
 
-export async function listSystems() {
+export async function listSystemsForOwner(ownerId: string) {
   return prisma.system.findMany({
+    where: { ownerId },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -24,9 +25,9 @@ export function parseSystemName(input: unknown) {
   return name;
 }
 
-export async function createSystem(name: string) {
+export async function createSystem(name: string, ownerId: string) {
   return prisma.system.create({
-    data: { name },
+    data: { name, ownerId },
     select: {
       id: true,
       name: true,

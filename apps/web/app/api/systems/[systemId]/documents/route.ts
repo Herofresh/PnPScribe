@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listDocumentsForSystem, parseSystemId } from "@/lib/server/documents";
+import { requireOwnedSystem } from "@/lib/server/auth/access";
 import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
 
 export async function GET(
@@ -9,6 +10,7 @@ export async function GET(
   try {
     const { systemId } = await context.params;
     const parsedSystemId = parseSystemId(systemId);
+    await requireOwnedSystem(parsedSystemId);
     const system = await listDocumentsForSystem(parsedSystemId);
 
     return NextResponse.json({

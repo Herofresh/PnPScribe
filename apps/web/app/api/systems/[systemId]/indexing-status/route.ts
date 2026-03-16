@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireOwnedSystem } from "@/lib/server/auth/access";
 import { getSystemIndexingStatus } from "@/lib/server/indexing-status";
 import { getErrorMessage, getErrorStatus } from "@/lib/server/http-error";
 
@@ -9,6 +10,7 @@ export async function GET(
 ) {
   try {
     const { systemId } = await context.params;
+    await requireOwnedSystem(systemId);
     const result = await getSystemIndexingStatus(systemId);
 
     return NextResponse.json({

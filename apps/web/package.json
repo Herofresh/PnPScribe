@@ -7,15 +7,20 @@
     "build": "next build",
     "build_disabled": "NEXT_DISABLE_GOOGLE_FONTS=1 NEXT_DISABLE_TURBOPACK=1 TURBOPACK=0 next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "gm:enable": "node ./scripts/set-gm-mode.mjs enable",
+    "gm:disable": "node ./scripts/set-gm-mode.mjs disable"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
     "@pnpscribe/ingestion": "file:../../packages/ingestion",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^5.58.5",
     "ioredis": "^5.7.0",
     "next": "16.1.6",
+    "next-auth": "^5.0.0-beta.30",
     "openai": "^6.22.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.296",
