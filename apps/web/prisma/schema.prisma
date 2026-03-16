@@ -7,18 +7,21 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  gmEnabled     Boolean   @default(false)
-  accounts      Account[]
-  sessions      Session[]
-  systemsOwned  System[]  @relation("SystemOwner")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String            @id @default(cuid())
+  name             String?
+  email            String            @unique
+  emailVerified    DateTime?
+  image            String?
+  passwordHash     String?
+  gmEnabled        Boolean           @default(false)
+  accounts         Account[]
+  sessions         Session[]
+  systemsOwned     System[]          @relation("SystemOwner")
+  groupsOwned      Group[]           @relation("GroupOwner")
+  groupMemberships GroupMembership[]
+  createdInvites   InviteLink[]      @relation("InviteCreator")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 }
 
 model Account {
@@ -65,6 +68,49 @@ model System {
   createdAt DateTime @default(now())
   documents Document[]
   entities  Entity[]
+  groups    Group[]
+}
+
+model Group {
+  id           String            @id @default(cuid())
+  systemId     String
+  system       System            @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  ownerId      String
+  owner        User              @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  memberships  GroupMembership[]
+  inviteLinks  InviteLink[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([systemId, createdAt])
+  @@index([ownerId, createdAt])
+}
+
+model GroupMembership {
+  id        String   @id @default(cuid())
+  groupId    String
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String   @default("player")
+  createdAt  DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId, createdAt])
+}
+
+model InviteLink {
+  id           String   @id @default(cuid())
+  token        String   @unique
+  groupId      String
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User     @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
 }
 
 model Document {

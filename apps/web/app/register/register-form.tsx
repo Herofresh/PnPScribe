@@ -8,7 +8,7 @@ type RegisterResponse = {
   error?: string;
 };
 
-export function RegisterForm() {
+export function RegisterForm({ callbackUrl }: { callbackUrl: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,6 +45,7 @@ export function RegisterForm() {
         email,
         password,
         redirect: false,
+        callbackUrl,
       });
 
       if (typeof signInResult?.error === "string" && signInResult.error.length > 0) {
@@ -53,7 +54,7 @@ export function RegisterForm() {
         return;
       }
 
-      window.location.href = "/";
+      window.location.href = signInResult?.url ?? callbackUrl;
     } catch {
       setError("Registration request failed.");
       setSubmitting(false);
@@ -111,7 +112,10 @@ export function RegisterForm() {
 
       <p className="mt-5 text-sm text-zinc-400">
         Already have an account?{" "}
-        <a href="/login" className="text-zinc-100 underline decoration-zinc-700 underline-offset-2">
+        <a
+          href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+          className="text-zinc-100 underline decoration-zinc-700 underline-offset-2"
+        >
           Sign in
         </a>
       </p>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -9,6 +10,70 @@ import { RulesAskPanel } from "@/app/rules-ask-panel";
 import { SignOutForm } from "@/app/sign-out-form";
 import { prisma } from "@/lib/prisma";
 import { requireGmUser } from "@/lib/server/auth/access";
+import { createGroup, createInviteLink, parseGroupDescription, parseGroupName } from "@/lib/server/groups";
+
+async function createSystemGroup(formData: FormData) {
+  "use server";
+
+  const user = await requireGmUser();
+  const rawSystemId = formData.get("systemId");
+  const systemId = typeof rawSystemId === "string" ? rawSystemId.trim() : "";
+  const name = parseGroupName(formData.get("name"));
+  const description = parseGroupDescription(formData.get("description"));
+
+  if (systemId === "") {
+    return;
+  }
+
+  const system = await prisma.system.findUnique({
+    where: { id: systemId },
+    select: { id: true, ownerId: true },
+  });
+
+  if (system == null || system.ownerId !== user.id) {
+    return;
+  }
+
+  await createGroup({
+    systemId: system.id,
+    ownerId: user.id,
+    name,
+    description,
+  });
+
+  revalidatePath("/");
+}
+
+async function createGroupInvite(formData: FormData) {
+  "use server";
+
+  const user = await requireGmUser();
+  const rawGroupId = formData.get("groupId");
+  const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
+
+  if (groupId === "") {
+    return;
+  }
+
+  const group = await prisma.group.findUnique({
+    where: { id: groupId },
+    select: {
+      id: true,
+      ownerId: true,
+    },
+  });
+
+  if (group == null || group.ownerId !== user.id) {
+    return;
+  }
+
+  await createInviteLink({
+    groupId: group.id,
+    createdById: user.id,
+  });
+
+  revalidatePath("/");
+}
 
 async function createOwnedSystem(formData: FormData) {
   "use server";
@@ -50,10 +115,39 @@ export default async function HomePage() {
         select: {
           documents: true,
           entities: true,
+          groups: true,
+        },
+      },
+      groups: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          createdAt: true,
+          _count: {
+            select: {
+              memberships: true,
+              inviteLinks: true,
+            },
+          },
+          inviteLinks: {
+            where: {
+              revokedAt: null,
+            },
+            orderBy: { createdAt: "desc" },
+            take: 3,
+            select: {
+              id: true,
+              token: true,
+              createdAt: true,
+            },
+          },
         },
       },
     },
   });
+  const baseUrl = process.env.AUTH_URL?.trim() || "http://localhost:3000";
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-10 text-zinc-100">
@@ -67,7 +161,15 @@ export default async function HomePage() {
               {user.gmEnabled === true ? " • GM mode enabled" : " • Player mode"}
             </p>
           </div>
-          <SignOutForm />
+          <div className="flex items-center gap-3">
+            <Link
+              href="/settings"
+              className="inline-flex h-10 items-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 hover:border-zinc-500"
+            >
+              Settings
+            </Link>
+            <SignOutForm />
+          </div>
         </header>
 
         {user.gmEnabled !== true ? (
@@ -117,8 +219,78 @@ export default async function HomePage() {
                         <p className="text-xs text-zinc-500">{system.createdAt.toLocaleString()}</p>
                       </div>
                       <p className="mt-2 text-xs text-zinc-400">
-                        {system._count.documents} documents • {system._count.entities} entities
+                        {system._count.documents} documents • {system._count.entities} entities • {system._count.groups} groups
                       </p>
+
+                      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+                        <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Groups</p>
+                        <form action={createSystemGroup} className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                          <input type="hidden" name="systemId" value={system.id} />
+                          <input
+                            type="text"
+                            name="name"
+                            placeholder="New group name"
+                            maxLength={120}
+                            required
+                            className="h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+                          />
+                          <input
+                            type="text"
+                            name="description"
+                            placeholder="Optional description"
+                            maxLength={500}
+                            className="h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+                          />
+                          <button
+                            type="submit"
+                            className="h-10 rounded-lg bg-sky-400 px-3 text-sm font-medium text-zinc-950 hover:bg-sky-300"
+                          >
+                            Create Group
+                          </button>
+                        </form>
+
+                        {system.groups.length === 0 ? (
+                          <p className="mt-3 text-sm text-zinc-500">No groups yet.</p>
+                        ) : (
+                          <ul className="mt-3 space-y-3">
+                            {system.groups.map((group) => (
+                              <li key={group.id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium text-zinc-100">{group.name}</p>
+                                    {group.description != null && group.description !== "" ? (
+                                      <p className="mt-1 text-xs text-zinc-400">{group.description}</p>
+                                    ) : null}
+                                    <p className="mt-2 text-xs text-zinc-500">
+                                      {group._count.memberships} members • {group._count.inviteLinks} invite links
+                                    </p>
+                                  </div>
+                                  <form action={createGroupInvite}>
+                                    <input type="hidden" name="groupId" value={group.id} />
+                                    <button
+                                      type="submit"
+                                      className="h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-100 hover:border-zinc-500"
+                                    >
+                                      Create Invite Link
+                                    </button>
+                                  </form>
+                                </div>
+
+                                {group.inviteLinks.length > 0 ? (
+                                  <div className="mt-3 space-y-2">
+                                    {group.inviteLinks.map((invite) => (
+                                      <div key={invite.id} className="rounded border border-zinc-800 px-3 py-2 text-xs text-zinc-300">
+                                        <p className="text-zinc-500">{invite.createdAt.toLocaleString()}</p>
+                                        <p className="mt-1 break-all text-zinc-200">{`${baseUrl}/invite/${invite.token}`}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

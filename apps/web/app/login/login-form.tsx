@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 
-export function LoginForm({ allowGoogle }: { allowGoogle: boolean }) {
+export function LoginForm({ allowGoogle, callbackUrl }: { allowGoogle: boolean; callbackUrl: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +18,7 @@ export function LoginForm({ allowGoogle }: { allowGoogle: boolean }) {
       email,
       password,
       redirect: false,
+      callbackUrl,
     });
 
     if (typeof result?.error === "string" && result.error.length > 0) {
@@ -26,13 +27,13 @@ export function LoginForm({ allowGoogle }: { allowGoogle: boolean }) {
       return;
     }
 
-    window.location.href = "/";
+    window.location.href = result?.url ?? callbackUrl;
   }
 
   async function handleGoogleLogin() {
     setSubmitting(true);
     setError(null);
-    await signIn("google", { callbackUrl: "/" });
+    await signIn("google", { callbackUrl });
   }
 
   return (
@@ -86,7 +87,10 @@ export function LoginForm({ allowGoogle }: { allowGoogle: boolean }) {
 
       <p className="mt-5 text-sm text-zinc-400">
         No account yet?{" "}
-        <a href="/register" className="text-zinc-100 underline decoration-zinc-700 underline-offset-2">
+        <a
+          href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+          className="text-zinc-100 underline decoration-zinc-700 underline-offset-2"
+        >
           Create one
         </a>
       </p>
