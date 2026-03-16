@@ -12,6 +12,8 @@ RUN cd services/ocr-worker && npm install
 COPY packages/ingestion ./packages/ingestion
 COPY services/ocr-worker ./services/ocr-worker
 
+RUN cd packages/ingestion && npm install
+RUN cd packages/ingestion && npm run build
 RUN cd services/ocr-worker && npm run build
 
 FROM node:22-bookworm-slim AS runner
