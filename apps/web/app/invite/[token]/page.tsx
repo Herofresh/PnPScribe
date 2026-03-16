@@ -122,7 +122,7 @@ export default async function InvitePage({
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
             {query.accepted === "1" ? (
               <div className="rounded-lg border border-emerald-900 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-200">
-                You have joined the group. Return to the dashboard to see your memberships once the player view lands.
+                You have joined the group. Return to the dashboard to see the membership in your groups list.
               </div>
             ) : (
               <>

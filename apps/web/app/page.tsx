@@ -104,6 +104,40 @@ export default async function HomePage() {
   }
 
   const user = session.user;
+  const memberships = await prisma.groupMembership.findMany({
+    where: { userId: user.id },
+    orderBy: [{ createdAt: "desc" }],
+    select: {
+      id: true,
+      role: true,
+      createdAt: true,
+      group: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          system: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              memberships: true,
+            },
+          },
+        },
+      },
+    },
+  });
   const systems = await prisma.system.findMany({
     where: { ownerId: user.id },
     orderBy: { createdAt: "desc" },
@@ -129,6 +163,21 @@ export default async function HomePage() {
             select: {
               memberships: true,
               inviteLinks: true,
+            },
+          },
+          memberships: {
+            orderBy: [{ createdAt: "asc" }],
+            select: {
+              id: true,
+              role: true,
+              createdAt: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
             },
           },
           inviteLinks: {
@@ -172,12 +221,46 @@ export default async function HomePage() {
           </div>
         </header>
 
-        {user.gmEnabled !== true ? (
-          <section className="rounded-2xl border border-sky-900 bg-sky-950/20 p-5 text-sm text-sky-100">
-            Your account is currently in player mode. GM-owned systems, group invites, and player memberships are the
-            next step. Until that lands, a GM-enabled account is required to create or manage systems.
-          </section>
-        ) : (
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-zinc-200">Your Groups</h2>
+            <span className="text-xs text-zinc-500">{memberships.length} memberships</span>
+          </div>
+
+          {memberships.length === 0 ? (
+            <p className="text-sm text-zinc-400">
+              You have not joined any groups yet. Accept an invite link from a GM to appear here.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {memberships.map((membership) => {
+                const ownerName = membership.group.owner.name?.trim() ?? "";
+                const ownerLabel = ownerName !== "" ? ownerName : membership.group.owner.email;
+
+                return (
+                  <li key={membership.id} className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-zinc-100">{membership.group.name}</p>
+                        <p className="mt-1 text-xs text-zinc-400">{membership.group.system.name}</p>
+                      </div>
+                      <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">{membership.role}</p>
+                    </div>
+                    {membership.group.description != null && membership.group.description !== "" ? (
+                      <p className="mt-2 text-sm text-zinc-400">{membership.group.description}</p>
+                    ) : null}
+                    <p className="mt-2 text-xs text-zinc-500">
+                      GM: {ownerLabel} • {membership.group._count.memberships} members • joined{" "}
+                      {membership.createdAt.toLocaleString()}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {user.gmEnabled === true ? (
           <>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
               <h2 className="mb-4 text-sm font-medium text-zinc-200">Create System</h2>
@@ -286,6 +369,32 @@ export default async function HomePage() {
                                     ))}
                                   </div>
                                 ) : null}
+
+                                <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+                                  <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Members</p>
+                                  {group.memberships.length === 0 ? (
+                                    <p className="mt-2 text-xs text-zinc-500">No accepted members yet.</p>
+                                  ) : (
+                                    <ul className="mt-2 space-y-2">
+                                      {group.memberships.map((membership) => {
+                                        const memberName = membership.user.name?.trim() ?? "";
+                                        const memberLabel = memberName !== "" ? memberName : membership.user.email;
+
+                                        return (
+                                          <li
+                                            key={membership.id}
+                                            className="rounded border border-zinc-800 px-3 py-2 text-xs text-zinc-300"
+                                          >
+                                            <p className="text-zinc-100">{memberLabel}</p>
+                                            <p className="mt-1 text-zinc-500">
+                                              {membership.role} • joined {membership.createdAt.toLocaleString()}
+                                            </p>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  )}
+                                </div>
                               </li>
                             ))}
                           </ul>
@@ -305,6 +414,11 @@ export default async function HomePage() {
             <ChunkDebugPanel systems={systems} />
             <EntitiesDebugPanel systems={systems} />
           </>
+        ) : (
+          <section className="rounded-2xl border border-sky-900 bg-sky-950/20 p-5 text-sm text-sky-100">
+            Your account is currently in player mode. GM mode is still admin-managed. You can already join groups
+            through invite links and see accepted memberships above.
+          </section>
         )}
       </div>
     </main>
