@@ -2,6 +2,8 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 COPY packages/ingestion/package*.json ./packages/ingestion/
 COPY services/ocr-worker/package*.json ./services/ocr-worker/
 
@@ -21,4 +23,3 @@ COPY --from=builder /app/packages /app/packages
 COPY --from=builder /app/services/ocr-worker /app/services/ocr-worker
 
 CMD ["npm", "run", "start"]
-
