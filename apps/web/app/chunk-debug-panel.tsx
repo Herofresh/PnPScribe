@@ -89,6 +89,49 @@ type DocumentChunksResponse = {
   }>;
 };
 
+type EntityMetaResponse = {
+  ok: boolean;
+  error?: string;
+  document?: {
+    id: string;
+    entityMetaStatus: string | null;
+    entityMetaError: string | null;
+    entityMetaModel: string | null;
+    entityMetaUpdatedAt: string | null;
+    entityMetaJson: {
+      mode?: string;
+      model?: string;
+      batch_count?: number;
+      batch_concurrency?: number;
+      merge_mode?: string;
+      notes?: string[];
+      entity_types?: Array<{
+        name?: string;
+        aliases?: string[];
+        signals?: string[];
+        example_sections?: string[];
+        confidence?: number;
+        likely_locations?: Array<{
+          page_start?: number | null;
+          page_end?: number | null;
+          chunk_start?: number | null;
+          chunk_end?: number | null;
+          section_title?: string | null;
+          reason?: string | null;
+        }>;
+      }>;
+      batches?: Array<{
+        batch_label?: string;
+        notes?: string[];
+        entity_types?: Array<{
+          name?: string;
+          confidence?: number;
+        }>;
+      }>;
+    } | null;
+  };
+};
+
 export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
   const [systemId, setSystemId] = useState(systems[0]?.id ?? "");
   const [documentsState, setDocumentsState] = useState<{
@@ -117,8 +160,48 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
     error: string | null;
     message: string | null;
   }>({ loading: false, error: null, message: null });
+  const [metaState, setMetaState] = useState<{
+    loading: boolean;
+    error: string | null;
+    running: boolean;
+    message: string | null;
+    payload: EntityMetaResponse | null;
+  }>({ loading: false, error: null, running: false, message: null, payload: null });
   const [ocrMode, setOcrMode] = useState<"replace" | "supplement">("replace");
   const [ocrFullRun, setOcrFullRun] = useState(false);
+
+  async function loadMetaForDocument(activeDocumentId: string) {
+    setMetaState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const res = await fetch(`/api/documents/${activeDocumentId}/entities/meta`);
+      const data = (await res.json()) as EntityMetaResponse;
+
+      if (!data.ok) {
+        setMetaState((prev) => ({
+          ...prev,
+          loading: false,
+          error: data.error ?? "Failed to load entity meta.",
+          payload: null,
+        }));
+        return;
+      }
+
+      setMetaState((prev) => ({
+        ...prev,
+        loading: false,
+        error: null,
+        payload: data,
+      }));
+    } catch {
+      setMetaState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Failed to load entity meta.",
+        payload: null,
+      }));
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +215,7 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
 
       setDocumentsState((prev) => ({ ...prev, loading: true, error: null }));
       setChunksState({ loading: false, error: null, payload: null });
+      setMetaState({ loading: false, error: null, running: false, message: null, payload: null });
 
       try {
         const res = await fetch(`/api/systems/${systemId}/documents`);
@@ -148,8 +232,12 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
         }
 
         const docs = data.documents ?? [];
+        const nextDocumentId = docs[0]?.id ?? "";
         setDocumentsState({ loading: false, error: null, documents: docs });
-        setDocumentId((current) => (docs.some((doc) => doc.id === current) ? current : (docs[0]?.id ?? "")));
+        setDocumentId(nextDocumentId);
+        if (nextDocumentId !== "") {
+          void loadMetaForDocument(nextDocumentId);
+        }
       } catch {
         if (!cancelled) {
           setDocumentsState({ loading: false, error: "Failed to load documents.", documents: [] });
@@ -185,6 +273,13 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
     } catch {
       setChunksState({ loading: false, error: "Failed to load chunks.", payload: null });
     }
+  }
+
+  async function loadMeta() {
+    if (!documentId) {
+      return;
+    }
+    await loadMetaForDocument(documentId);
   }
 
   async function requestOcr() {
@@ -224,7 +319,7 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
       setOcrRequestState({
         loading: false,
         error: null,
-        message: data.queued ? `OCR job queued (${data.provider ?? "worker"}).` : "OCR request sent.",
+        message: data.queued === true ? `OCR job queued (${data.provider ?? "worker"}).` : "OCR request sent.",
       });
 
       await loadChunks();
@@ -275,6 +370,47 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
     }
   }
 
+  async function requestEntityMeta() {
+    if (!documentId) {
+      return;
+    }
+
+    setMetaState((prev) => ({ ...prev, running: true, error: null, message: null }));
+
+    try {
+      const res = await fetch(`/api/documents/${documentId}/entities/meta`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+
+      if (!data.ok) {
+        setMetaState((prev) => ({
+          ...prev,
+          running: false,
+          error: data.error ?? "Failed to run entity meta analysis.",
+          message: null,
+        }));
+        return;
+      }
+
+      setMetaState((prev) => ({
+        ...prev,
+        running: false,
+        error: null,
+        message: "Entity meta analysis completed.",
+      }));
+
+      await loadMeta();
+    } catch {
+      setMetaState((prev) => ({
+        ...prev,
+        running: false,
+        error: "Failed to run entity meta analysis.",
+        message: null,
+      }));
+    }
+  }
+
   async function resetQueues() {
     setResetState({ loading: true, error: null, message: null });
 
@@ -311,6 +447,7 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
     () => documentsState.documents.find((doc) => doc.id === documentId) ?? null,
     [documentsState.documents, documentId],
   );
+  const entityMeta = metaState.payload?.document?.entityMetaJson;
 
   if (systems.length === 0) {
     return null;
@@ -338,7 +475,15 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
 
         <select
           value={documentId}
-          onChange={(event) => setDocumentId(event.target.value)}
+          onChange={(event) => {
+            const nextDocumentId = event.target.value;
+            setDocumentId(nextDocumentId);
+            setChunksState({ loading: false, error: null, payload: null });
+            setMetaState({ loading: false, error: null, running: false, message: null, payload: null });
+            if (nextDocumentId !== "") {
+              void loadMetaForDocument(nextDocumentId);
+            }
+          }}
           disabled={documentsState.loading || documentsState.documents.length === 0}
           className="h-11 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none disabled:opacity-60 focus:border-zinc-500"
         >
@@ -384,6 +529,24 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
 
         <button
           type="button"
+          onClick={() => void requestEntityMeta()}
+          disabled={!documentId || metaState.running}
+          className="h-10 rounded-lg bg-emerald-300 px-4 text-sm font-medium text-zinc-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {metaState.running ? "Building meta..." : "Run Meta Index"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void loadMeta()}
+          disabled={!documentId || metaState.loading}
+          className="h-10 rounded-lg bg-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {metaState.loading ? "Loading meta..." : "Load Meta"}
+        </button>
+
+        <button
+          type="button"
           onClick={() => void resetQueues()}
           disabled={resetState.loading}
           className="h-10 rounded-lg bg-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
@@ -410,13 +573,33 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
         </label>
 
         {documentsState.loading ? <span className="text-xs text-zinc-400">Loading documents...</span> : null}
-        {documentsState.error ? <span className="text-xs text-rose-300">{documentsState.error}</span> : null}
-        {ocrRequestState.error ? <span className="text-xs text-rose-300">{ocrRequestState.error}</span> : null}
-        {ocrRequestState.message ? <span className="text-xs text-emerald-300">{ocrRequestState.message}</span> : null}
-        {entityRequestState.error ? <span className="text-xs text-rose-300">{entityRequestState.error}</span> : null}
-        {entityRequestState.message ? <span className="text-xs text-emerald-300">{entityRequestState.message}</span> : null}
-        {resetState.error ? <span className="text-xs text-rose-300">{resetState.error}</span> : null}
-        {resetState.message ? <span className="text-xs text-emerald-300">{resetState.message}</span> : null}
+        {documentsState.error !== null && documentsState.error !== "" ? (
+          <span className="text-xs text-rose-300">{documentsState.error}</span>
+        ) : null}
+        {ocrRequestState.error !== null && ocrRequestState.error !== "" ? (
+          <span className="text-xs text-rose-300">{ocrRequestState.error}</span>
+        ) : null}
+        {ocrRequestState.message !== null && ocrRequestState.message !== "" ? (
+          <span className="text-xs text-emerald-300">{ocrRequestState.message}</span>
+        ) : null}
+        {entityRequestState.error !== null && entityRequestState.error !== "" ? (
+          <span className="text-xs text-rose-300">{entityRequestState.error}</span>
+        ) : null}
+        {entityRequestState.message !== null && entityRequestState.message !== "" ? (
+          <span className="text-xs text-emerald-300">{entityRequestState.message}</span>
+        ) : null}
+        {metaState.error !== null && metaState.error !== "" ? (
+          <span className="text-xs text-rose-300">{metaState.error}</span>
+        ) : null}
+        {metaState.message !== null && metaState.message !== "" ? (
+          <span className="text-xs text-emerald-300">{metaState.message}</span>
+        ) : null}
+        {resetState.error !== null && resetState.error !== "" ? (
+          <span className="text-xs text-rose-300">{resetState.error}</span>
+        ) : null}
+        {resetState.message !== null && resetState.message !== "" ? (
+          <span className="text-xs text-emerald-300">{resetState.message}</span>
+        ) : null}
       </div>
 
       {selectedDocument ? (
@@ -441,22 +624,30 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
           </p>
           <p className="mt-1 text-zinc-300">
             <span className="text-zinc-500">ocr:</span> {selectedDocument.ocrStatus}
-            {selectedDocument.ocrMode ? ` • mode=${selectedDocument.ocrMode}` : ""}
-            {selectedDocument.ocrReason ? ` • ${selectedDocument.ocrReason}` : ""}
-            {selectedDocument.ocrRequestedAt ? ` • requested ${selectedDocument.ocrRequestedAt}` : ""}
+            {selectedDocument.ocrMode !== null && selectedDocument.ocrMode !== "" ? ` • mode=${selectedDocument.ocrMode}` : ""}
+            {selectedDocument.ocrReason !== null && selectedDocument.ocrReason !== "" ? ` • ${selectedDocument.ocrReason}` : ""}
+            {selectedDocument.ocrRequestedAt !== null && selectedDocument.ocrRequestedAt !== ""
+              ? ` • requested ${selectedDocument.ocrRequestedAt}`
+              : ""}
           </p>
           <p className="mt-1 text-zinc-300">
             <span className="text-zinc-500">ocr progress:</span>{" "}
             {selectedDocument.ocrProgressCurrentPage ?? 0}/
             {selectedDocument.ocrProgressTotalPages ?? "?"}
-            {selectedDocument.ocrProgressMessage ? ` • ${selectedDocument.ocrProgressMessage}` : ""}
-            {selectedDocument.ocrProgressUpdatedAt ? ` • updated ${selectedDocument.ocrProgressUpdatedAt}` : ""}
+            {selectedDocument.ocrProgressMessage !== null && selectedDocument.ocrProgressMessage !== ""
+              ? ` • ${selectedDocument.ocrProgressMessage}`
+              : ""}
+            {selectedDocument.ocrProgressUpdatedAt !== null && selectedDocument.ocrProgressUpdatedAt !== ""
+              ? ` • updated ${selectedDocument.ocrProgressUpdatedAt}`
+              : ""}
           </p>
           <p className="mt-1 text-zinc-300">
             <span className="text-zinc-500">entity status:</span>{" "}
             {selectedDocument.entityStatus}
-            {selectedDocument.entityProgressMessage ? ` • ${selectedDocument.entityProgressMessage}` : ""}
-            {selectedDocument.entityProgressUpdatedAt
+            {selectedDocument.entityProgressMessage !== null && selectedDocument.entityProgressMessage !== ""
+              ? ` • ${selectedDocument.entityProgressMessage}`
+              : ""}
+            {selectedDocument.entityProgressUpdatedAt !== null && selectedDocument.entityProgressUpdatedAt !== ""
               ? ` • updated ${selectedDocument.entityProgressUpdatedAt}`
               : ""}
           </p>
@@ -466,17 +657,35 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
             {" • "}rules={selectedDocument.entityRuleLinkCount ?? 0}
             {" • "}images={selectedDocument.entityImageCount ?? 0}
           </p>
-          {selectedDocument.entityError ? (
+          <p className="mt-1 text-zinc-300">
+            <span className="text-zinc-500">entity meta:</span>{" "}
+            {metaState.payload?.document?.entityMetaStatus ?? "unknown"}
+            {metaState.payload?.document?.entityMetaModel != null &&
+            metaState.payload.document.entityMetaModel !== ""
+              ? ` • model=${metaState.payload.document.entityMetaModel}`
+              : ""}
+            {metaState.payload?.document?.entityMetaUpdatedAt != null &&
+            metaState.payload.document.entityMetaUpdatedAt !== ""
+              ? ` • updated ${metaState.payload.document.entityMetaUpdatedAt}`
+              : ""}
+          </p>
+          {selectedDocument.entityError !== null && selectedDocument.entityError !== "" ? (
             <p className="mt-1 break-words text-amber-300">
               <span className="text-zinc-500">entity error:</span> {selectedDocument.entityError}
             </p>
           ) : null}
-          {selectedDocument.ocrError ? (
+          {metaState.payload?.document?.entityMetaError != null &&
+          metaState.payload.document.entityMetaError !== "" ? (
+            <p className="mt-1 break-words text-amber-300">
+              <span className="text-zinc-500">entity meta error:</span> {metaState.payload.document.entityMetaError}
+            </p>
+          ) : null}
+          {selectedDocument.ocrError !== null && selectedDocument.ocrError !== "" ? (
             <p className="mt-1 break-words text-amber-300">
               <span className="text-zinc-500">ocrError:</span> {selectedDocument.ocrError}
             </p>
           ) : null}
-          {selectedDocument.extractionError ? (
+          {selectedDocument.extractionError !== null && selectedDocument.extractionError !== "" ? (
             <p className="mt-1 break-words text-amber-300">
               <span className="text-zinc-500">error:</span> {selectedDocument.extractionError}
             </p>
@@ -495,13 +704,128 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
         </div>
       ) : null}
 
-      {chunksState.error ? (
+      {entityMeta != null ? (
+        <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>
+              <span className="text-zinc-500">meta mode:</span> {entityMeta.mode ?? "unknown"}
+            </span>
+            <span>
+              <span className="text-zinc-500">batch count:</span> {entityMeta.batch_count ?? 0}
+            </span>
+            <span>
+              <span className="text-zinc-500">parallelism:</span> {entityMeta.batch_concurrency ?? 1}
+            </span>
+            <span>
+              <span className="text-zinc-500">merge:</span> {entityMeta.merge_mode ?? "unknown"}
+            </span>
+            <span>
+              <span className="text-zinc-500">entity types:</span> {entityMeta.entity_types?.length ?? 0}
+            </span>
+          </div>
+
+          {entityMeta.notes != null && entityMeta.notes.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-zinc-500">merged notes</p>
+              <ul className="mt-1 space-y-1">
+                {entityMeta.notes.map((note, index) => (
+                  <li key={`${note}-${index}`} className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1">
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {entityMeta.entity_types != null && entityMeta.entity_types.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-zinc-500">merged entity index</p>
+              <ul className="mt-2 space-y-2">
+                {entityMeta.entity_types.map((entityType, index) => (
+                  <li key={`${entityType.name ?? "type"}-${index}`} className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                    <p className="font-medium text-zinc-100">
+                      {entityType.name ?? "Unnamed type"}
+                      {typeof entityType.confidence === "number"
+                        ? ` • confidence ${entityType.confidence.toFixed(2)}`
+                        : ""}
+                    </p>
+                    {entityType.aliases != null && entityType.aliases.length > 0 ? (
+                      <p className="mt-1">
+                        <span className="text-zinc-500">aliases:</span> {entityType.aliases.join(", ")}
+                      </p>
+                    ) : null}
+                    {entityType.signals != null && entityType.signals.length > 0 ? (
+                      <p className="mt-1">
+                        <span className="text-zinc-500">signals:</span> {entityType.signals.join(", ")}
+                      </p>
+                    ) : null}
+                    {entityType.example_sections != null && entityType.example_sections.length > 0 ? (
+                      <p className="mt-1">
+                        <span className="text-zinc-500">sections:</span> {entityType.example_sections.join(", ")}
+                      </p>
+                    ) : null}
+                    {entityType.likely_locations != null && entityType.likely_locations.length > 0 ? (
+                      <ul className="mt-2 space-y-1">
+                        {entityType.likely_locations.slice(0, 6).map((location, locationIndex) => (
+                          <li
+                            key={`${entityType.name ?? "type"}-location-${locationIndex}`}
+                            className="rounded border border-zinc-800 bg-zinc-950/60 px-2 py-1 text-zinc-400"
+                          >
+                            pages {location.page_start ?? "?"}-{location.page_end ?? "?"} • chunks{" "}
+                            {location.chunk_start ?? "?"}-{location.chunk_end ?? "?"}
+                            {location.section_title != null && location.section_title !== "" ? ` • ${location.section_title}` : ""}
+                            {location.reason != null && location.reason !== "" ? ` • ${location.reason}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {entityMeta.batches != null && entityMeta.batches.length > 0 ? (
+            <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+              <summary className="cursor-pointer text-zinc-200">Batch breakdown</summary>
+              <ul className="mt-3 space-y-2">
+                {entityMeta.batches.map((batch, index) => (
+                  <li key={`${batch.batch_label ?? "batch"}-${index}`} className="rounded border border-zinc-800 bg-zinc-950/60 p-2">
+                    <p className="font-medium text-zinc-100">{batch.batch_label ?? `Batch ${index + 1}`}</p>
+                    <p className="mt-1 text-zinc-400">
+                      {(batch.entity_types ?? [])
+                        .map((entityType) =>
+                          entityType.name != null && entityType.name !== ""
+                            ? `${entityType.name}${typeof entityType.confidence === "number" ? ` (${entityType.confidence.toFixed(2)})` : ""}`
+                            : null,
+                        )
+                        .filter((value): value is string => value !== null)
+                        .join(", ") || "No entity types returned"}
+                    </p>
+                    {batch.notes != null && batch.notes.length > 0 ? (
+                      <ul className="mt-2 space-y-1">
+                        {batch.notes.map((note, noteIndex) => (
+                          <li key={`${note}-${noteIndex}`} className="text-zinc-500">
+                            {note}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
+      {chunksState.error !== null && chunksState.error !== "" ? (
         <p className="mt-4 rounded-lg border border-rose-800 bg-rose-950/20 px-3 py-2 text-sm text-rose-200">
           {chunksState.error}
         </p>
       ) : null}
 
-      {chunksState.payload?.ok && chunksState.payload.chunks ? (
+      {chunksState.payload?.ok === true && chunksState.payload.chunks != null ? (
         <div className="mt-4 space-y-3">
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300">
             <span className="text-zinc-500">loaded chunks:</span> {chunksState.payload.chunks.length}
@@ -519,7 +843,7 @@ export function ChunkDebugPanel({ systems }: { systems: SystemOption[] }) {
                   {chunk.pageNumber !== null ? ` • page ${chunk.pageNumber}` : ""}
                   {chunk.hasEmbedding ? " • embedded" : " • no-embedding"}
                 </p>
-                {chunk.chapterHint ? (
+                {chunk.chapterHint !== null && chunk.chapterHint !== "" ? (
                   <p className="mt-1 text-xs text-zinc-300">
                     <span className="text-zinc-500">chapter:</span> {chunk.chapterHint}
                   </p>

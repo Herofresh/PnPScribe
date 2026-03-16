@@ -18,6 +18,9 @@ interface RetrievedChunk {
   distance: number;
 }
 
+const DEFAULT_RULE_TOP_K = 8;
+const MAX_RULE_TOP_K = 12;
+
 function toVectorLiteral(values: number[]) {
   return `[${values.join(",")}]`;
 }
@@ -52,7 +55,7 @@ export async function retrieveRuleChunks(params: {
   }
 
   const vectorLiteral = toVectorLiteral(questionEmbedding);
-  const topK = Math.min(Math.max(params.topK ?? 5, 1), 8);
+  const topK = Math.min(Math.max(params.topK ?? DEFAULT_RULE_TOP_K, 1), MAX_RULE_TOP_K);
 
   const rows = await prisma.$queryRaw<
     Array<{
@@ -137,7 +140,7 @@ export async function answerRulesQuestion(params: {
   const chunks = await retrieveRuleChunks({
     systemId: params.systemId,
     question: params.question,
-    topK: 5,
+    topK: DEFAULT_RULE_TOP_K,
   });
 
   if (chunks.length === 0) {

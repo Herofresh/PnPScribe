@@ -20,6 +20,8 @@ model User {
   groupsOwned      Group[]           @relation("GroupOwner")
   groupMemberships GroupMembership[]
   createdInvites   InviteLink[]      @relation("InviteCreator")
+  characters       Character[]
+  characterFiles   CharacterFile[]   @relation("CharacterFileUploader")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 }
@@ -79,6 +81,7 @@ model Group {
   owner        User              @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   name         String
   description  String?
+  characters   Character[]
   memberships  GroupMembership[]
   inviteLinks  InviteLink[]
   createdAt    DateTime          @default(now())
@@ -111,6 +114,64 @@ model InviteLink {
   expiresAt    DateTime?
   revokedAt    DateTime?
   createdAt    DateTime @default(now())
+}
+
+model Character {
+  id           String          @id @default(cuid())
+  groupId       String
+  group         Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  ownerUserId   String
+  ownerUser     User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  files         CharacterFile[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([groupId, createdAt])
+  @@index([ownerUserId, createdAt])
+}
+
+model CharacterFile {
+  id                  String           @id @default(cuid())
+  characterId         String
+  character           Character        @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  uploadedById        String
+  uploadedBy          User             @relation("CharacterFileUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  label               String?
+  originalFileName    String
+  filePath            String
+  extractedText       String?
+  extractedTextLength Int?
+  extractedPageCount  Int?
+  extractionDurationMs Int?
+  extractionStatus    String           @default("pending")
+  extractionError     String?
+  extractedAt         DateTime?
+  isListed            Boolean          @default(true)
+  replacedById        String?
+  replacedBy          CharacterFile?   @relation("CharacterFileReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces           CharacterFile[]   @relation("CharacterFileReplacement")
+  chunks              CharacterChunk[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([characterId, createdAt])
+  @@index([characterId, isListed, createdAt])
+}
+
+model CharacterChunk {
+  id              String         @id @default(cuid())
+  characterFileId String
+  characterFile   CharacterFile  @relation(fields: [characterFileId], references: [id], onDelete: Cascade)
+  content         String
+  chunkIndex      Int
+  pageNumber      Int?
+  chapterHint     String?
+  embedding       Unsupported("vector")?
+  createdAt       DateTime       @default(now())
+
+  @@index([characterFileId, chunkIndex])
 }
 
 model Document {

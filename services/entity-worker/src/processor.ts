@@ -37,10 +37,36 @@ interface MetaEntityType {
   aliases?: unknown;
   signals?: unknown;
   example_sections?: unknown;
+  likely_locations?: unknown;
   confidence?: unknown;
 }
 
-function extractEntityTypes(meta: unknown): Array<{ name: string; aliases: string[] }> {
+interface MetaLocation {
+  page_start?: unknown;
+  page_end?: unknown;
+  chunk_start?: unknown;
+  chunk_end?: unknown;
+  section_title?: unknown;
+  reason?: unknown;
+}
+
+interface ParsedMetaEntityType {
+  name: string;
+  aliases: string[];
+  signals: string[];
+  exampleSections: string[];
+  likelyLocations: Array<{
+    pageStart: number | null;
+    pageEnd: number | null;
+    chunkStart: number | null;
+    chunkEnd: number | null;
+    sectionTitle: string | null;
+    reason: string | null;
+  }>;
+  confidence: number;
+}
+
+function extractEntityTypes(meta: unknown): ParsedMetaEntityType[] {
   if (!meta || typeof meta !== "object") {
     return [];
   }
@@ -58,12 +84,44 @@ function extractEntityTypes(meta: unknown): Array<{ name: string; aliases: strin
       const aliases = Array.isArray(typed.aliases)
         ? typed.aliases.filter((alias): alias is string => typeof alias === "string")
         : [];
-      return { name, aliases };
+      const signals = Array.isArray(typed.signals)
+        ? typed.signals.filter((signal): signal is string => typeof signal === "string")
+        : [];
+      const exampleSections = Array.isArray(typed.example_sections)
+        ? typed.example_sections.filter((section): section is string => typeof section === "string")
+        : [];
+      const likelyLocations = Array.isArray(typed.likely_locations)
+        ? typed.likely_locations
+            .map((location) => {
+              const parsed = typeof location === "object" && location !== null ? (location as MetaLocation) : null;
+              if (parsed == null) {
+                return null;
+              }
+              return {
+                pageStart: typeof parsed.page_start === "number" ? parsed.page_start : null,
+                pageEnd: typeof parsed.page_end === "number" ? parsed.page_end : null,
+                chunkStart: typeof parsed.chunk_start === "number" ? parsed.chunk_start : null,
+                chunkEnd: typeof parsed.chunk_end === "number" ? parsed.chunk_end : null,
+                sectionTitle: typeof parsed.section_title === "string" ? parsed.section_title : null,
+                reason: typeof parsed.reason === "string" ? parsed.reason : null,
+              };
+            })
+            .filter(
+              (
+                location,
+              ): location is ParsedMetaEntityType["likelyLocations"][number] => location !== null,
+            )
+        : [];
+      const confidence =
+        typeof typed.confidence === "number" && Number.isFinite(typed.confidence)
+          ? Math.max(0, Math.min(1, typed.confidence))
+          : 0.5;
+      return { name, aliases, signals, exampleSections, likelyLocations, confidence };
     })
-    .filter((entry): entry is { name: string; aliases: string[] } => Boolean(entry));
+    .filter((entry): entry is ParsedMetaEntityType => Boolean(entry));
 }
 
-function pickEntityType(input: string | undefined, allowed: Array<{ name: string; aliases: string[] }>) {
+function pickEntityType(input: string | undefined, allowed: ParsedMetaEntityType[]) {
   if (!input) {
     return null;
   }
@@ -77,6 +135,72 @@ function pickEntityType(input: string | undefined, allowed: Array<{ name: string
     }
   }
   return null;
+}
+
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function rangeOverlaps(startA: number | null, endA: number | null, startB: number | null, endB: number | null) {
+  if (startA == null || endA == null || startB == null || endB == null) {
+    return false;
+  }
+  return startA <= endB && endA >= startB;
+}
+
+function rankMetaTypesForGroup(group: ChunkGroupRecord, content: string, entityTypes: ParsedMetaEntityType[]) {
+  const titleText = normalizeText(group.title);
+  const chapterText = normalizeText(group.chapterHint);
+  const contentText = content.toLowerCase();
+
+  return entityTypes
+    .map((entry) => {
+      let score = entry.confidence * 2;
+
+      if (titleText.includes(entry.name.toLowerCase())) {
+        score += 6;
+      }
+
+      for (const alias of entry.aliases) {
+        const normalizedAlias = alias.toLowerCase();
+        if (titleText.includes(normalizedAlias)) {
+          score += 4;
+        }
+        if (contentText.includes(normalizedAlias)) {
+          score += 2;
+        }
+      }
+
+      for (const signal of entry.signals) {
+        const normalizedSignal = signal.toLowerCase();
+        if (contentText.includes(normalizedSignal)) {
+          score += 1.5;
+        }
+      }
+
+      for (const section of entry.exampleSections) {
+        const normalizedSection = section.toLowerCase();
+        if (titleText.includes(normalizedSection) || chapterText.includes(normalizedSection)) {
+          score += 2;
+        }
+      }
+
+      for (const location of entry.likelyLocations) {
+        if (
+          rangeOverlaps(group.startChunkIndex, group.endChunkIndex, location.chunkStart, location.chunkEnd) ||
+          rangeOverlaps(group.startPage, group.endPage, location.pageStart, location.pageEnd)
+        ) {
+          score += 5;
+        }
+
+        if (location.sectionTitle && (titleText.includes(location.sectionTitle.toLowerCase()) || chapterText.includes(location.sectionTitle.toLowerCase()))) {
+          score += 2.5;
+        }
+      }
+
+      return { ...entry, score };
+    })
+    .sort((left, right) => right.score - left.score);
 }
 
 function slugify(input: string) {
@@ -116,14 +240,26 @@ function inferNameFromTitle(group: ChunkGroupRecord, content: string) {
 async function normalizeEntityWithLlm(
   group: ChunkGroupRecord,
   content: string,
-  meta: { entityTypes: Array<{ name: string; aliases: string[] }> },
+  meta: { entityTypes: ParsedMetaEntityType[] },
 ): Promise<NormalizedEntity | null> {
-  const guessedType: CandidateType = group.kind === "item_section" ? "item" : "monster";
+  const rankedMetaTypes = rankMetaTypesForGroup(group, content, meta.entityTypes);
+  const topMetaTypes = rankedMetaTypes.slice(0, 5);
+  const guessedType: CandidateType =
+    topMetaTypes[0]?.name ?? (group.kind === "item_section" ? "item" : "monster");
   const fallbackName = inferNameFromTitle(group, content);
   const allowedTypes = meta.entityTypes;
   const typeHint =
     allowedTypes.length > 0
       ? `Allowed entity types: ${allowedTypes.map((entry) => entry.name).join(", ")}.`
+      : "";
+  const metaHint =
+    topMetaTypes.length > 0
+      ? `Prioritize these document-level entity hints when relevant: ${topMetaTypes
+          .map(
+            (entry) =>
+              `${entry.name} (score=${entry.score.toFixed(1)}, signals=${entry.signals.slice(0, 3).join("|") || "none"}, sections=${entry.exampleSections.slice(0, 2).join("|") || "none"})`,
+          )
+          .join("; ")}.`
       : "";
 
   try {
@@ -139,6 +275,7 @@ async function normalizeEntityWithLlm(
               "Extract one RPG entity from text. Return strict JSON only. No markdown.",
               "Schema: {entityType:string,name:string,aliases:string[],confidence:number,coreData:object,notes:string[]}",
               typeHint,
+              metaHint,
             ]
               .filter(Boolean)
               .join(" "),
@@ -148,7 +285,27 @@ async function normalizeEntityWithLlm(
           content: [
             {
               type: "input_text",
-              text: `Section kind: ${group.kind}\nTitle: ${group.title ?? ""}\nText:\n${content.slice(0, 9000)}`,
+              text: [
+                `Section kind: ${group.kind}`,
+                `Title: ${group.title ?? ""}`,
+                `Chapter hint: ${group.chapterHint ?? ""}`,
+                `Chunk range: ${group.startChunkIndex}-${group.endChunkIndex}`,
+                `Page range: ${group.startPage ?? "unknown"}-${group.endPage ?? "unknown"}`,
+                topMetaTypes.length > 0
+                  ? `Relevant meta hints: ${JSON.stringify(
+                      topMetaTypes.map((entry) => ({
+                        name: entry.name,
+                        aliases: entry.aliases.slice(0, 5),
+                        signals: entry.signals.slice(0, 5),
+                        exampleSections: entry.exampleSections.slice(0, 3),
+                        likelyLocations: entry.likelyLocations.slice(0, 4),
+                      })),
+                    )}`
+                  : null,
+                `Text:\n${content.slice(0, 9000)}`,
+              ]
+                .filter(Boolean)
+                .join("\n"),
             },
           ],
         },
@@ -207,6 +364,12 @@ async function normalizeEntityWithLlm(
       coreData,
       rawData: {
         llm: parsed,
+        matchedMetaTypes: topMetaTypes.map((entry) => ({
+          name: entry.name,
+          score: entry.score,
+          signals: entry.signals.slice(0, 5),
+          exampleSections: entry.exampleSections.slice(0, 3),
+        })),
       },
     };
   } catch (error) {
@@ -254,6 +417,11 @@ export async function processEntityJob(
   });
 
   const groups = await listCandidateGroups(payload.documentId);
+  console.log("[entity-worker] candidate groups loaded", {
+    documentId: payload.documentId,
+    count: groups.length,
+    kinds: Array.from(new Set(groups.map((group) => group.kind))),
+  });
   let extractedEntities = 0;
   let linkedRules = 0;
   let linkedImages = 0;

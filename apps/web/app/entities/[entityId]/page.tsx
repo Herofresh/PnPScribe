@@ -83,14 +83,30 @@ export default async function EntityDetailPage({
           {entity.images.length === 0 ? (
             <p className="mt-2 text-sm text-zinc-500">No images linked.</p>
           ) : (
-            <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
               {entity.images.map((image) => (
-                <li key={image.id} className="rounded border border-zinc-800 bg-zinc-950/60 p-2">
-                  page {image.pageNumber} • {image.kind}
-                  <div className="mt-1 break-all text-zinc-500">{image.filePath}</div>
-                </li>
+                <a
+                  key={image.id}
+                  href={`/api/entities/${entity.id}/images/${image.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/60 transition hover:border-zinc-600"
+                >
+                  <img
+                    src={`/api/entities/${entity.id}/images/${image.id}`}
+                    alt={`${entity.name} page ${image.pageNumber}`}
+                    className="h-64 w-full bg-zinc-950 object-contain"
+                    loading="lazy"
+                  />
+                  <div className="border-t border-zinc-800 px-3 py-2 text-xs text-zinc-300">
+                    <p>
+                      page {image.pageNumber} • {image.kind}
+                    </p>
+                    <p className="mt-1 break-all text-zinc-500">{image.filePath}</p>
+                  </div>
+                </a>
               ))}
-            </ul>
+            </div>
           )}
         </section>
 

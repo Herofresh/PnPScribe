@@ -39,9 +39,26 @@ export interface EntityExtractionJobPayload {
 
 export async function enqueueEntityExtractionJob(payload: EntityExtractionJobPayload) {
   const queue = getQueue();
+  const jobId = `entity-${payload.documentId}`;
+  const existingJob = await queue.getJob(jobId);
+
+  if (existingJob) {
+    const state = await existingJob.getState();
+    const isTerminalState = state === "completed" || state === "failed";
+
+    if (isTerminalState) {
+      await existingJob.remove();
+    } else {
+      return {
+        queueName: ENTITY_QUEUE_NAME,
+        jobId: existingJob.id,
+        payload,
+      };
+    }
+  }
 
   const job = await queue.add("entity-extraction", payload, {
-    jobId: `entity-${payload.documentId}`,
+    jobId,
     removeOnComplete: 200,
     removeOnFail: 500,
     attempts: 2,

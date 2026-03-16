@@ -135,7 +135,14 @@ export async function listCandidateGroups(documentId: string) {
     SELECT "id", "kind", "title", "chapterHint", "startChunkIndex", "endChunkIndex", "startPage", "endPage"
     FROM "ChunkGroup"
     WHERE "documentId" = $1
-      AND "kind" IN ('monster_section', 'item_section')
+      AND (
+        "kind" IN ('monster_section', 'item_section', 'chapter', 'rules_section')
+        OR (
+          "kind" = 'generic'
+          AND COALESCE(NULLIF(BTRIM("title"), ''), NULLIF(BTRIM("chapterHint"), '')) IS NOT NULL
+          AND ("endChunkIndex" - "startChunkIndex") <= 2
+        )
+      )
     ORDER BY "groupIndex" ASC
     `,
     [documentId],

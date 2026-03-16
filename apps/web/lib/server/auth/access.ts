@@ -95,3 +95,116 @@ export async function requireOwnedEntity(entityId: string) {
     entity,
   };
 }
+
+export async function requireGroupAccess(groupId: string) {
+  const user = await requireSessionUser();
+  const group = await prisma.group.findUnique({
+    where: { id: groupId },
+    select: {
+      id: true,
+      ownerId: true,
+      systemId: true,
+      memberships: {
+        where: { userId: user.id },
+        select: { id: true, role: true },
+        take: 1,
+      },
+    },
+  });
+
+  const isMember = (group?.memberships.length ?? 0) > 0;
+  const isOwner = group?.ownerId === user.id;
+
+  if (group == null || (!isOwner && !isMember)) {
+    throw new HttpError(404, "Group not found.");
+  }
+
+  return {
+    user,
+    group,
+    isOwner,
+    isMember,
+  };
+}
+
+export async function requireCharacterAccess(characterId: string) {
+  const user = await requireSessionUser();
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+    select: {
+      id: true,
+      ownerUserId: true,
+      groupId: true,
+      group: {
+        select: {
+          ownerId: true,
+          systemId: true,
+          memberships: {
+            where: { userId: user.id },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  const isCharacterOwner = character?.ownerUserId === user.id;
+  const isGroupOwner = character?.group.ownerId === user.id;
+  const isGroupMember = (character?.group.memberships.length ?? 0) > 0;
+
+  if (character == null || (!isCharacterOwner && !isGroupOwner && !isGroupMember)) {
+    throw new HttpError(404, "Character not found.");
+  }
+
+  return {
+    user,
+    character,
+    isCharacterOwner,
+    isGroupOwner,
+    isGroupMember,
+  };
+}
+
+export async function requireCharacterFileAccess(characterFileId: string) {
+  const user = await requireSessionUser();
+  const file = await prisma.characterFile.findUnique({
+    where: { id: characterFileId },
+    select: {
+      id: true,
+      characterId: true,
+      isListed: true,
+      character: {
+        select: {
+          ownerUserId: true,
+          group: {
+            select: {
+              ownerId: true,
+              memberships: {
+                where: { userId: user.id },
+                select: { id: true },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const isCharacterOwner = file?.character.ownerUserId === user.id;
+  const isGroupOwner = file?.character.group.ownerId === user.id;
+  const isGroupMember = (file?.character.group.memberships.length ?? 0) > 0;
+
+  if (file == null || (!isCharacterOwner && !isGroupOwner && !isGroupMember)) {
+    throw new HttpError(404, "Character file not found.");
+  }
+
+  return {
+    user,
+    file,
+    isCharacterOwner,
+    isGroupOwner,
+    isGroupMember,
+  };
+}

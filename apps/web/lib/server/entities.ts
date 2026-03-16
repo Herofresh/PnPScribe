@@ -136,3 +136,24 @@ export async function getEntityRuleLinks(entityId: string) {
     links,
   };
 }
+
+export async function getEntityImage(entityId: string, imageId: string) {
+  const image = await prisma.entityImage.findFirst({
+    where: {
+      id: imageId,
+      entityId,
+    },
+    select: {
+      id: true,
+      filePath: true,
+      kind: true,
+      pageNumber: true,
+    },
+  });
+
+  if (!image) {
+    throw new HttpError(404, "Entity image not found.");
+  }
+
+  return image;
+}

@@ -1,6 +1,12 @@
 import { fileURLToPath } from "node:url";
 
 const parsedConfidence = Number(process.env.ENTITY_CONFIDENCE_THRESHOLD ?? "0.5");
+const detectedProjectRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const configuredProjectRoot = process.env.PNPSCRIBE_ROOT?.trim() ?? "";
+const shouldUseConfiguredProjectRoot =
+  configuredProjectRoot !== "" &&
+  configuredProjectRoot !== "/path/to/PnPScribe" &&
+  !configuredProjectRoot.includes("your-project-root");
 
 export const config = {
   redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
@@ -14,9 +20,7 @@ export const config = {
   imageExtractionEnabled: process.env.ENTITY_IMAGE_EXTRACTION_ENABLED !== "false",
   imageMaxPages: Number(process.env.ENTITY_IMAGE_MAX_PAGES ?? "3"),
   imageTargetWidth: Number(process.env.ENTITY_IMAGE_TARGET_WIDTH ?? "1400"),
-  projectRoot:
-    process.env.PNPSCRIBE_ROOT ??
-    fileURLToPath(new URL("../../..", import.meta.url)),
+  projectRoot: shouldUseConfiguredProjectRoot ? configuredProjectRoot : detectedProjectRoot,
   ruleLinkWindow: Number(process.env.ENTITY_RULE_LINK_WINDOW ?? "10"),
 } as const;
 
